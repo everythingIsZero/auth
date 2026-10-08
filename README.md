@@ -55,7 +55,7 @@ export function LoginPanel() {
 }
 ```
 
-`state` 形态：`{ channel: 'wechat'|'mobile'|'pc', status: 'idle'|'waiting'|'pending'|'ok'|'error'|'verifying', qrUrl, pairCode, error, wxEnabled, devLogin, user }`。
+`state` 形态：`{ channel: 'wechat'|'mobile'|'pc', status: 'idle'|'waiting'|'pending'|'ok'|'error'|'verifying', qrUrl, pairCode, error, wxEnabled, devLogin, user }`（`user` 默认含 `id / displayName / avatar`）。
 
 - 挂载即消费 `?sso=return` 回跳；非微信内自动出码轮询。
 - 状态枚举与服务端契约一致：`waiting | pending（已扫码待确认）| ok | expired（自动换码）`。

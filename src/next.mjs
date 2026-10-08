@@ -86,8 +86,8 @@ function introspectFailure(kind) {
  *   session: { secret: string | (() => string), ttlSec?: number, cookieName?: string },
  *   anchor?: 'identity'|'allowlist'|'first-login',
  *   anchorEnv?: string | null,
- *   resolveIdentity?: (openid: string, ctx: { source: 'sso'|'qr', nickname?: string|null, avatar?: string|null }) => Promise<{ uid: string, displayName?: string|null }|null> | { uid: string, displayName?: string|null } | null,
- *   userPayload?: (id: string, displayName?: string|null) => unknown
+ *   resolveIdentity?: (openid: string, ctx: { source: 'sso'|'qr', nickname?: string|null, avatar?: string|null }) => Promise<{ uid: string, displayName?: string|null, avatar?: string|null }|null> | { uid: string, displayName?: string|null, avatar?: string|null } | null,
+ *   userPayload?: (id: string, displayName?: string|null, avatar?: string|null) => unknown
  * }} config
  */
 export function createAuthRoutes(config) {
@@ -111,7 +111,7 @@ export function createAuthRoutes(config) {
   const secretOf = () => (typeof session.secret === 'function' ? session.secret() : session.secret)
   const conf = authServerConf(cfg.authServer)
   const resolveIdentity = cfg.resolveIdentity || null
-  const userPayload = cfg.userPayload || ((id, displayName) => ({ id, displayName: displayName || null }))
+  const userPayload = cfg.userPayload || ((id, displayName, avatar) => ({ id, displayName: displayName || null, avatar: avatar || null }))
 
   /**
    * 403 响应体（不在准入名单）。
@@ -139,10 +139,10 @@ export function createAuthRoutes(config) {
         avatar: (profile && profile.avatar) || null,
       })
       if (!ident || !ident.uid) return null
-      return { uid: String(ident.uid), displayName: ident.displayName ?? null }
+      return { uid: String(ident.uid), displayName: ident.displayName ?? null, avatar: ident.avatar ?? null }
     }
     // 无 resolveIdentity：uid 即 openid（admin 现状——白名单已在上一步把住）
-    return { uid: openid, displayName: null }
+    return { uid: openid, displayName: null, avatar: null }
   }
 
   /**
@@ -155,7 +155,7 @@ export function createAuthRoutes(config) {
     const secret = secretOf()
     if (!secret) return json({ ok: false, error: '会话密钥未配置' }, 503)
     const { value, maxAgeSec } = issueSession(ident.uid, { secret, ttlSec })
-    const res = json({ ok: true, ...(extra || {}), user: userPayload(ident.uid, ident.displayName) })
+    const res = json({ ok: true, ...(extra || {}), user: userPayload(ident.uid, ident.displayName, ident.avatar) })
     res.headers.append('set-cookie', sessionCookieHeader(cookieName, value, maxAgeSec))
     return res
   }

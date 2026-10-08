@@ -222,6 +222,19 @@ test('wxPoll：扫码昵称/头像与来源透传给 resolveIdentity（各站建
   assert.equal((await res.json()).user.displayName, '灰邪')
 })
 
+test('userPayload：resolveIdentity 返回的 avatar 透传到响应 user.avatar（前端免再调 /me）', async () => {
+  stubFetch(() => jsonResponse({ ok: true, status: 'ok', openid: 'openid-av', nickname: '灰邪', avatar: 'https://a.b/av.png' }))
+  const routes = createAuthRoutes(
+    baseConfig({
+      resolveIdentity: (openid, ctx) => ({ uid: 'user-' + openid, displayName: ctx.nickname, avatar: ctx.avatar }),
+    }),
+  )
+  const res = await routes.wxPoll(new Request('http://x/api/auth/wx-poll?scene=ssologin-' + 'a'.repeat(24)))
+  const body = await res.json()
+  assert.equal(body.user.avatar, 'https://a.b/av.png')
+  assert.equal(body.user.displayName, '灰邪')
+})
+
 test('ssoVerify：org 站凭票根尽力补档案，门面 profile 空对象时降级为无资料（登录不受影响）', async () => {
   const calls = stubFetch((url, body) => {
     if (url.endsWith('/api/auth/introspect')) return jsonResponse({ ok: true, openid: 'openid-sso-1' })
@@ -239,7 +252,7 @@ test('ssoVerify：org 站凭票根尽力补档案，门面 profile 空对象时�
   )
   const res = await routes.ssoVerify(new Request('http://x/api/auth/sso-verify', { method: 'POST', body: JSON.stringify({ ticket: 'ab'.repeat(24) }) }))
   assert.equal(res.status, 200)
-  assert.deepEqual((await res.json()).user, { id: 'user-openid-sso-1', displayName: null })
+  assert.deepEqual((await res.json()).user, { id: 'user-openid-sso-1', displayName: null, avatar: null })
   // profile 端点被调用且带票根与 org
   const profileCall = calls.find((c) => c.url.endsWith('/api/auth/profile'))
   assert.ok(profileCall, 'org 站应调用 profile 端点补资料')

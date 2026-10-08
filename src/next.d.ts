@@ -12,8 +12,8 @@ export type ResolveIdentity = (
     avatar: string | null
   },
 ) =>
-  | Promise<{ uid: string; displayName?: string | null } | null>
-  | { uid: string; displayName?: string | null }
+  | Promise<{ uid: string; displayName?: string | null; avatar?: string | null } | null>
+  | { uid: string; displayName?: string | null; avatar?: string | null }
   | null
 
 export type AuthRoutesConfig = {
@@ -38,8 +38,8 @@ export type AuthRoutesConfig = {
   anchorEnv?: string | null
   /** openid → 本站 uid；anchor=allowlist 且省略时 uid 即 openid */
   resolveIdentity?: ResolveIdentity
-  /** 登录成功时回给前端的 user 形状（缺省 { id, displayName }） */
-  userPayload?: (id: string, displayName?: string | null) => unknown
+  /** 登录成功时回给前端的 user 形状（缺省 { id, displayName, avatar }） */
+  userPayload?: (id: string, displayName?: string | null, avatar?: string | null) => unknown
 }
 
 export type AuthRoutes = {

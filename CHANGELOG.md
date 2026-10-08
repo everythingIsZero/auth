@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-08
+
+### Added
+
+- `next` 工厂：`resolveIdentity` 可返回 `avatar`，默认 `userPayload` 增带 `avatar`（`{ id, displayName, avatar }`），前端登录后免再调 `/api/auth/me` 取头像。向后兼容（avatar 可缺，回填 null）。
+
 ## [0.1.0] - 2026-10-08
 
 由 `@app/auth`（wordinput/fang 各持副本）升级为单一来源，新增框架无关控制器与平台适配。
