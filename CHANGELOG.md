@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-08
+
+### Added
+
+- `ui`：新增纯视图 `SsoLoginView`（吃 `state` + 动作、不建连接），供测试与「已自持登录态」的站复用；`SsoLoginPanel` 支持 `login` 注入。
+- 默认皮肤测试覆盖**每个终端分支**（微信内按钮 / 手机配对码 / PC 二维码 / pending / error / devLogin），SSR 渲染，共 11 项。
+
 ## [0.2.0] - 2026-10-08
 
 ### Added

@@ -2,14 +2,14 @@
 /**
  * ui.mjs — 默认登录皮肤（React DOM，零 antd/tailwind 依赖）
  *
- * 给「不想自己画登录 UI」的站一个开箱即用的弹层：PC 出二维码、手机出配对码文字、
- * 微信内出「一键登录」按钮。全部数据来自 `useSsoLogin`，样式走内联 + CSS 变量，可覆盖。
+ * 三个导出，按「需要多少」选用：
+ *   - `SsoLoginView`  纯视图：吃 `state` + 动作，**不打电话**。可被任意 state 渲染/测试，
+ *                     也供「已自持登录状态」的站复用。
+ *   - `SsoLoginPanel` 自带 `useSsoLogin` 的面板（turnkey）。
+ *   - `SsoLoginModal` 弹层（覆盖 + 关闭 + 面板）。
  *
+ * 按端显示：微信内=一键登录按钮；手机浏览器=配对码文字；PC=二维码。
  * 不适用：小程序端（Taro weapp）——那边用 controller，不要引本文件。
- *
- * 用法：
- *   <SsoLoginModal open={open} onClose={() => setOpen(false)} caps={caps}
- *     onSuccess={() => location.reload()} />
  */
 import { createElement as h, useCallback, useState } from 'react'
 import { useSsoLogin } from './react.mjs'
@@ -44,7 +44,6 @@ const S = {
   pair: { fontSize: 34, fontWeight: 700, letterSpacing: '.22em', color: 'var(--sso-accent, #07c160)', margin: '8px 0 12px' },
   hint: { fontSize: 13, color: '#888', lineHeight: 1.6, margin: '6px 0 0' },
   err: { fontSize: 14, color: '#d4380d', margin: '10px 0 4px' },
-  spin: { width: 26, height: 26, margin: '30px auto', border: '3px solid #eee', borderTopColor: 'var(--sso-accent, #07c160)', borderRadius: '50%', animation: 'ssospin .8s linear infinite' },
   spacer: { height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#aaa', fontSize: 13 },
 }
 
@@ -69,15 +68,20 @@ async function copyText(text) {
   }
 }
 
-/** 内层面板（调用 useSsoLogin；仅在需要时挂载，避免无谓轮询） */
-export function SsoLoginPanel(props) {
+/**
+ * 纯视图：只按 `state` 渲染 + 调回调，不建立连接。
+ * @param {{
+ *   state: { channel:'wechat'|'mobile'|'pc', status:string, qrUrl?:string, pairCode?:string, error?:string, devLogin?:boolean },
+ *   startSso?: () => void, refresh?: () => void, devLogin?: () => void,
+ *   title?: string, hint?: string, devLoginLabel?: string
+ * }} props
+ */
+export function SsoLoginView(props) {
   const {
-    caps, title = '登录', hint, devLoginLabel = '开发旁路登录（本地验证）',
-    onSuccess, ...loginOpts
+    state, startSso, refresh, devLogin,
+    title = '登录', hint, devLoginLabel = '开发旁路登录（本地验证）',
   } = props || {}
-  const { state, startSso, refresh, devLogin } = useSsoLogin({ ...loginOpts, caps, onSuccess })
   const [copied, setCopied] = useState(false)
-
   const onCopy = useCallback(async () => {
     if (await copyText(state.pairCode)) setCopied(true)
   }, [state.pairCode])
@@ -85,10 +89,11 @@ export function SsoLoginPanel(props) {
   const content = []
   if (state.status === 'error') {
     content.push(h('p', { key: 'e', style: S.err }, state.error || '登录未完成'))
-    content.push(h('button', { key: 'r', style: S.ghostBtn, onClick: () => refresh() }, '重试'))
+    content.push(h('button', { key: 'r', style: S.ghostBtn, onClick: () => refresh && refresh() }, '重试'))
   } else if (state.channel === 'wechat') {
-    content.push(h('button', { key: 'w', style: S.primaryBtn, onClick: () => startSso() }, '微信一键登录'))
+    content.push(h('button', { key: 'w', style: S.primaryBtn, onClick: () => startSso && startSso() }, '微信一键登录'))
   } else if (state.channel === 'mobile') {
+    // 手机浏览器：无法扫自己屏幕上的码 → 出 6 位配对码文字
     content.push(
       state.pairCode
         ? h('div', { key: 'p' }, [
@@ -99,6 +104,7 @@ export function SsoLoginPanel(props) {
         : h('div', { key: 'l', style: S.spacer }, '正在生成登录码…'),
     )
   } else {
+    // PC：二维码
     content.push(
       state.qrUrl
         ? h('img', { key: 'q', src: state.qrUrl, alt: '微信登录二维码', style: S.qr })
@@ -107,7 +113,7 @@ export function SsoLoginPanel(props) {
     )
   }
   if (state.devLogin) {
-    content.push(h('button', { key: 'd', style: S.ghostBtn, onClick: () => devLogin() }, devLoginLabel))
+    content.push(h('button', { key: 'd', style: S.ghostBtn, onClick: () => devLogin && devLogin() }, devLoginLabel))
   }
 
   return h('div', null, [
@@ -118,19 +124,24 @@ export function SsoLoginPanel(props) {
   ])
 }
 
-/** 弹层：open=false 时不挂载（不轮询、不消费回跳） */
+/** 自带 useSsoLogin 的面板（turnkey） */
+export function SsoLoginPanel(props) {
+  const { caps, title = '登录', hint, devLoginLabel, onSuccess, login, ...loginOpts } = props || {}
+  // 若外部已自持登录态（login），走纯视图；否则本组件自建（hook 无条件调用，SSR 安全）
+  const internal = useSsoLogin({ ...loginOpts, caps, onSuccess })
+  const use = login || internal
+  return h(SsoLoginView, { state: use.state, startSso: use.startSso, refresh: use.refresh, devLogin: use.devLogin, title, hint, devLoginLabel })
+}
+
+/** 弹层：open=false 不挂载（不轮询、不消费回跳） */
 export function SsoLoginModal(props) {
   const { open, onClose, ...rest } = props || {}
   if (!open) return null
   return h('div', { style: S.overlay, onClick: onClose }, [
-    h(
-      'div',
-      { key: 'card', style: S.card, onClick: (e) => e.stopPropagation() },
-      [
-        h('button', { key: 'x', style: S.close, onClick: onClose, 'aria-label': '关闭' }, '×'),
-        h(SsoLoginPanel, { key: 'p', ...rest }),
-      ],
-    ),
+    h('div', { key: 'card', style: S.card, onClick: (e) => e.stopPropagation() }, [
+      h('button', { key: 'x', style: S.close, onClick: onClose, 'aria-label': '关闭' }, '×'),
+      h(SsoLoginPanel, { key: 'p', ...rest }),
+    ]),
   ])
 }
 

@@ -1,27 +1,47 @@
 import type { ReactElement } from 'react'
 import type { UseSsoLoginOptions } from './react'
 
-export interface SsoLoginPanelProps extends UseSsoLoginOptions {
-  /** 标题，默认「登录」 */
-  title?: string
-  /** 底部提示文案 */
-  hint?: string
-  /** 开发旁路按钮文案 */
-  devLoginLabel?: string
-  /** 登录成功回调 */
-  onSuccess?: (data: any) => void
+export interface SsoLoginState {
+  channel: 'wechat' | 'mobile' | 'pc'
+  status: string
+  qrUrl?: string
+  pairCode?: string
+  error?: string
+  devLogin?: boolean
 }
 
-/** 内层面板（直接嵌入；自带 useSsoLogin） */
+/** 已自持的登录态（useSsoLogin 返回值或等价对象） */
+export interface SsoLoginHandle {
+  state: SsoLoginState
+  startSso?: () => void
+  refresh?: () => void
+  devLogin?: () => void
+}
+
+export interface SsoLoginViewProps extends SsoLoginHandle {
+  title?: string
+  hint?: string
+  devLoginLabel?: string
+}
+
+/** 纯视图：只按 state 渲染（可测、可嵌入） */
+export declare function SsoLoginView(props: SsoLoginViewProps): ReactElement
+
+export interface SsoLoginPanelProps extends UseSsoLoginOptions {
+  title?: string
+  hint?: string
+  devLoginLabel?: string
+  onSuccess?: (data: any) => void
+  /** 传入已自持的登录态（如外层已调用 useSsoLogin）；不传则本组件自建 */
+  login?: SsoLoginHandle
+}
+
 export declare function SsoLoginPanel(props: SsoLoginPanelProps): ReactElement
 
 export interface SsoLoginModalProps extends SsoLoginPanelProps {
-  /** 是否显示弹层；false 时不挂载 */
   open?: boolean
-  /** 关闭回调（点遮罩/关闭按钮触发） */
   onClose?: () => void
 }
 
-/** 弹层（覆盖 + 关闭；open=false 返回 null） */
 export declare function SsoLoginModal(props: SsoLoginModalProps): ReactElement | null
 export default SsoLoginModal
