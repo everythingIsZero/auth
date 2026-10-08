@@ -107,6 +107,14 @@ test('手机浏览器 → channel=mobile，取码后带出 pairCode', async () =
   assert.equal(c.getState().pairCode, '042031')
 })
 
+test('桌面微信（isWechat 真、isMobile 假）→ channel=wechat，不取码', async () => {
+  const h = harness()
+  const c = h.mk({ isWechat: true, isMobile: false })
+  await c.start()
+  assert.equal(c.getState().channel, 'wechat')
+  assert.equal(h.calls.qrcode, 0)
+})
+
 test('轮询：waiting → pending → ok，ok 触发 onSuccess 且不再排定时器', async () => {
   const h = harness({ pollQueue: [{ ok: true, status: 'waiting' }, { ok: true, status: 'pending' }, { ok: true, status: 'ok', user: { id: 'u9' } }] })
   const successes = []
