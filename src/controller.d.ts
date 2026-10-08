@@ -65,4 +65,4 @@ export function createFetchApi(opts?: {
   devLoginUrl?: string
 }): LoginApi
 export function browserAdapter(win?: any): LoginAdapter
-export function taroAdapter(Taro: any, opts?: { isH5?: boolean; win?: any }): LoginAdapter
+export function taroAdapter(opts?: { isH5?: boolean; win?: any }): LoginAdapter

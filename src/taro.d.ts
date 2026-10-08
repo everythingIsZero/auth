@@ -1,7 +1,6 @@
 import type { LoginCaps, LoginApi, LoginAdapter, LoginController } from './controller'
 
 export interface CreateTaroLoginOptions {
-  Taro?: any
   isH5?: boolean
   win?: any
   api: LoginApi

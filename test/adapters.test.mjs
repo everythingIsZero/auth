@@ -53,7 +53,7 @@ test('browserAdapter：定时器转发到宿主', () => {
 })
 
 test('taroAdapter：非 H5（weapp）惰性——读不到 cookie、不跳转、不抛错', () => {
-  const a = taroAdapter({}, { isH5: false })
+  const a = taroAdapter({ isH5: false })
   assert.equal(a.readCookie('sl_web_session'), '')
   assert.equal(a.currentUrl(), '')
   assert.doesNotThrow(() => a.navigate('https://auth.hxym18.com/'))
@@ -62,7 +62,7 @@ test('taroAdapter：非 H5（weapp）惰性——读不到 cookie、不跳转、
 
 test('taroAdapter：H5 端委托给 window（复用 browserAdapter 语义）', () => {
   const w = fakeWin()
-  const a = taroAdapter({}, { isH5: true, win: w })
+  const a = taroAdapter({ isH5: true, win: w })
   assert.equal(a.readCookie('sl_web_session'), 'b'.repeat(48))
   assert.equal(a.currentUrl(), 'https://ka.hxym18.com/?a=1')
   a.navigate('https://auth.hxym18.com/')

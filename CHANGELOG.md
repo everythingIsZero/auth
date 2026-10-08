@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-10-08
+
+### Changed
+
+- `taroAdapter` 去掉未使用的 `Taro` 参数；`createTaroLogin` 不再需要 `Taro`（H5 走 window；小程序端登录不经本层）。
+
 ## [0.3.2] - 2026-10-08
 
 ### Fixed（独立复核发现）

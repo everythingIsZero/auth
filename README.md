@@ -69,7 +69,7 @@ export function LoginPanel() {
 
 ```js
 import { createTaroLogin } from '@hxym18/auth/taro'
-const login = createTaroLogin({ Taro, isH5, caps: capabilities({ ua: '...' }), api: makeTaroApi() })
+const login = createTaroLogin({ isH5, caps: capabilities({ ua: '...' }), api: makeTaroApi() })
 ```
 
 小程序端（`isH5 !== true`）adapter 惰性：读不到全域 cookie、不跳转、不抛错，登录由小程序身份源自行处理。

@@ -326,10 +326,10 @@ export function browserAdapter(win) {
 /**
  * Taro 适配。H5 端委托 window；小程序端（无全域 cookie / 网页跳转）保持惰性——
  * 读不到票根、不跳转、不抛错，登录由各小程序身份源自行处理。
- * @param {any} Taro
+ * （不需要 Taro 对象：H5 走 window；小程序端登录不经本层。）
  * @param {{ isH5?: boolean, win?: any }} [opts]
  */
-export function taroAdapter(Taro, opts) {
+export function taroAdapter(opts) {
   const o = opts || {}
   if (o.isH5) return browserAdapter(o.win || globalThis)
   return {

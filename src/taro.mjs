@@ -21,6 +21,6 @@ export function createTaroLogin(opts) {
   if (!o.api) throw new TypeError('createTaroLogin: api is required（小程序/ Taro 用自备请求层）')
   return createLoginController({
     ...o,
-    adapter: o.adapter || taroAdapter(o.Taro, { isH5: !!o.isH5, win: o.win }),
+    adapter: o.adapter || taroAdapter({ isH5: !!o.isH5, win: o.win }),
   })
 }
