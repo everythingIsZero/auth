@@ -244,3 +244,38 @@ test('dispose：清定时器，后续 api 回调不再更新状态', async () =>
   await c.refresh() // dispose 后 refresh 应安全 no-op
   assert.equal(states.length, n)
 })
+
+test('consumeReturn：dispose 后验票成功不再触发 onSuccess（防幽灵副作用）', async () => {
+  let resolveVerify
+  const h = harness({ url: 'https://ka.hxym18.com/?sso=return', cookies: { sl_web_session: TICKET } })
+  h.api.verify = () => new Promise((res) => { resolveVerify = res })
+  const successes = []
+  const c = h.mk({ isWechat: true, isMobile: true }, { onSuccess: (d) => successes.push(d) })
+  const p = c.consumeReturn()
+  c.dispose()
+  resolveVerify({ ok: true, user: { id: 'u1' } })
+  assert.equal(await p, false)
+  assert.equal(successes.length, 0)
+})
+
+test('start：配置拉取失败 → 报「配置拉取失败」而非「未开通」', async () => {
+  const h = harness()
+  h.api.config = async () => {
+    throw new Error('net down')
+  }
+  const c = h.mk({ isWechat: false, isMobile: false })
+  await c.start()
+  assert.equal(c.getState().status, 'error')
+  assert.match(c.getState().error, /配置拉取失败/)
+})
+
+test('refresh：重走 start 的开关门（wxEnabled=false 时仍报未开通，不直接取码）', async () => {
+  const h = harness({ config: { wxEnabled: false, devLogin: false } })
+  const c = h.mk({ isWechat: false, isMobile: false })
+  await c.start()
+  assert.equal(h.calls.config, 1)
+  await c.refresh()
+  assert.equal(h.calls.config, 2) // 重新拉配置（走门）
+  assert.equal(h.calls.qrcode, 0) // 未取码
+  assert.match(c.getState().error, /未开通/)
+})

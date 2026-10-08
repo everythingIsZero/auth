@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-08
+
+### Fixed（独立复核发现）
+
+- `controller`：`dispose()` 后异步完成不再触发 `onSuccess`（防幽灵副作用/重复登录流程）。
+- `controller`：配置拉取失败与「微信登录暂未开通」分开报错（不再把网络故障说成未开通）。
+- `controller`：`refresh()` 重走 `start()` 的 `wxEnabled` 开关门，重试不再绕过。
+- `ui`：`SsoLoginPanel` 传 `login` 时**只渲染纯视图**（不再挂 hook、不轮询）。
+- `react`：`onSuccess` 经 ref 取最新，避免内联箭头导致的闭包过期。
+
 ## [0.3.1] - 2026-10-08
 
 ### Changed

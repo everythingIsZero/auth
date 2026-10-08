@@ -76,7 +76,11 @@ export function useSsoLogin(opts) {
         }),
       pollIntervalMs: cur.pollIntervalMs,
       retryIntervalMs: cur.retryIntervalMs,
-      onSuccess: cur.onSuccess,
+      // onSuccess 经 ref 取最新（避免内联箭头导致闭包过期）
+      onSuccess: (d) => {
+        const f = optsRef.current.onSuccess
+        if (typeof f === 'function') f(d)
+      },
       onState: (s) => {
         if (!cancelled) setState(s)
       },

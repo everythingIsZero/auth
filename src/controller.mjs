@@ -197,6 +197,7 @@ export function createLoginController(opts) {
     setState({ status: 'verifying', error: '' })
     try {
       const d = await api.verify({ ticket })
+      if (disposed) return false
       if (d && d.ok) {
         setState({ status: 'ok', user: (d && d.user) || null })
         onSuccess(d)
@@ -229,14 +230,19 @@ export function createLoginController(opts) {
       return
     }
     let cfg = null
+    let cfgErr = false
     try {
       cfg = await api.config()
     } catch {
-      cfg = null
+      cfgErr = true
     }
     if (disposed) return
-    setState({ wxEnabled: !!(cfg && cfg.wxEnabled), devLogin: !!(cfg && cfg.devLogin) })
-    if (!cfg || !cfg.wxEnabled) {
+    if (cfgErr || !cfg) {
+      setState({ status: 'error', error: '配置拉取失败，请重试' })
+      return
+    }
+    setState({ wxEnabled: !!cfg.wxEnabled, devLogin: !!cfg.devLogin })
+    if (!cfg.wxEnabled) {
       setState({ status: 'error', error: '微信登录暂未开通' })
       return
     }
@@ -257,6 +263,7 @@ export function createLoginController(opts) {
       onSuccess(d)
       return true
     }
+    if (disposed) return false
     setState({ status: 'error', error: (d && d.error) || '开发旁路登录失败' })
     return false
   }
@@ -266,10 +273,10 @@ export function createLoginController(opts) {
     consumeReturn,
     start,
     startSso,
-    /** 重新出码（错误重试按钮用） */
+    /** 重新走一遍（含 config 开关门），用于错误重试按钮 */
     refresh: async () => {
       if (disposed) return
-      await startQr()
+      await start()
     },
     devLogin,
     dispose: () => {

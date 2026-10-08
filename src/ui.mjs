@@ -124,13 +124,18 @@ export function SsoLoginView(props) {
   ])
 }
 
-/** 自带 useSsoLogin 的面板（turnkey） */
-export function SsoLoginPanel(props) {
-  const { caps, title = '登录', hint, devLoginLabel, onSuccess, login, ...loginOpts } = props || {}
-  // 若外部已自持登录态（login），走纯视图；否则本组件自建（hook 无条件调用，SSR 安全）
-  const internal = useSsoLogin({ ...loginOpts, caps, onSuccess })
-  const use = login || internal
+/** 自带 useSsoLogin 的面板（turnkey）；仅在未注入 login 时才挂 hook */
+function SsoLoginPanelWithHook(props) {
+  const { caps, title = '登录', hint, devLoginLabel, onSuccess, ...loginOpts } = props || {}
+  const use = useSsoLogin({ ...loginOpts, caps, onSuccess })
   return h(SsoLoginView, { state: use.state, startSso: use.startSso, refresh: use.refresh, devLogin: use.devLogin, title, hint, devLoginLabel })
+}
+
+/** 面板：传 `login` 时**只渲染纯视图**（不建连接、不轮询） */
+export function SsoLoginPanel(props) {
+  const { login, title, hint, devLoginLabel, ...rest } = props || {}
+  if (login) return h(SsoLoginView, { ...login, title, hint, devLoginLabel })
+  return h(SsoLoginPanelWithHook, { title, hint, devLoginLabel, ...rest })
 }
 
 /** 弹层：open=false 不挂载（不轮询、不消费回跳） */
