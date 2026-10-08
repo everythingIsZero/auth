@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-08
+
+### Added
+
+- `caps` 兜底：`useSsoLogin` 未传 `caps` 时，浏览器端自动用 `@hxym18/env` 判定端（微信内/手机/PC），避免站点漏传导致默认成 PC。新增 `capsFromBrowser`（含 PWA standalone 判定）。
+- 依赖 `@hxym18/env`（终端判定单一来源）。
+
 ## [0.2.1] - 2026-10-08
 
 ### Added

@@ -11,6 +11,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { browserAdapter, createFetchApi, createLoginController } from './controller.mjs'
+import { capsFromBrowser } from './caps.mjs'
 
 const IDLE = {
   channel: 'pc',
@@ -53,10 +54,12 @@ export function useSsoLogin(opts) {
     if (!adapter) return undefined
 
     let cancelled = false
+    // caps 兜底：未显式传时从浏览器判定，避免站点忘记传导致默认成 PC（漏终端）
+    const caps = cur.caps || (typeof window !== 'undefined' ? capsFromBrowser(window) : undefined)
     const controller = createLoginController({
       authOrigin: cur.authOrigin,
       cookieName: cur.cookieName,
-      caps: cur.caps,
+      caps,
       adapter,
       api:
         cur.api ||

@@ -58,6 +58,7 @@ export function LoginPanel() {
 `state` 形态：`{ channel: 'wechat'|'mobile'|'pc', status: 'idle'|'waiting'|'pending'|'ok'|'error'|'verifying', qrUrl, pairCode, error, wxEnabled, devLogin, user }`（`user` 默认含 `id / displayName / avatar`）。
 
 - 挂载即消费 `?sso=return` 回跳；非微信内自动出码轮询。
+- **`caps` 可省略**：浏览器端自动用 `@hxym18/env` 判定端（微信内/手机/PC），避免忘记传而漏终端；仅在 SSR 或需强制指定端时显式传。
 - 状态枚举与服务端契约一致：`waiting | pending（已扫码待确认）| ok | expired（自动换码）`。
 
 ## 服务端接入（Next）
