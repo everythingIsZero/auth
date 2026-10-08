@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-08
+
+### Changed
+
+- 回退 v0.3.0 的 `@hxym18/env` 依赖与自动判定：消费仓启用了 pnpm `blockExoticSubdeps`，**禁止 git 依赖作为子依赖**，auth 不能依赖 env。`caps` 仍由调用方用 `@hxym18/env` 计算后传入；漏传时按 PC 处理并在开发期 `console.warn` 一次（提示漏终端）。
+
 ## [0.3.0] - 2026-10-08
 
 ### Added

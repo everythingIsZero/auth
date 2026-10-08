@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@hxym18/env':
-        specifier: github:everythingIsZero/env#v0.1.0
-        version: https://codeload.github.com/everythingIsZero/env/tar.gz/b85cfe9fd8f1d91d88f9967991033a35db6c3066
       '@tarojs/taro':
         specifier: '>=4'
         version: 4.3.0(@tarojs/components@4.3.0(@tarojs/helper@4.3.0(supports-color@7.2.0))(postcss@8.5.29))(@tarojs/helper@4.3.0(supports-color@7.2.0))(@tarojs/shared@4.3.0)(postcss@8.5.29)
@@ -228,10 +225,6 @@ packages:
     engines: {node: '>=12'}
     cpu: [x64]
     os: [win32]
-
-  '@hxym18/env@https://codeload.github.com/everythingIsZero/env/tar.gz/b85cfe9fd8f1d91d88f9967991033a35db6c3066':
-    resolution: {gitHosted: true, integrity: sha512-3uYMShwfMCCMi+RrJYDUdeAnMxW/rh3NftvaIC6xwLUcC9a7JjR9/JyZGtYdmY4SA3ZmToPf+EokcPTa3fUVGg==, tarball: https://codeload.github.com/everythingIsZero/env/tar.gz/b85cfe9fd8f1d91d88f9967991033a35db6c3066}
-    version: 0.1.0
 
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
@@ -910,8 +903,6 @@ snapshots:
 
   '@esbuild/win32-x64@0.21.5':
     optional: true
-
-  '@hxym18/env@https://codeload.github.com/everythingIsZero/env/tar.gz/b85cfe9fd8f1d91d88f9967991033a35db6c3066': {}
 
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:

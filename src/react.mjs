@@ -11,7 +11,6 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { browserAdapter, createFetchApi, createLoginController } from './controller.mjs'
-import { capsFromBrowser } from './caps.mjs'
 
 const IDLE = {
   channel: 'pc',
@@ -47,6 +46,7 @@ export function useSsoLogin(opts) {
   const optsRef = useRef(o)
   optsRef.current = o
   const controllerRef = useRef(null)
+  const warnedRef = useRef(false)
 
   useEffect(() => {
     const cur = optsRef.current
@@ -54,12 +54,15 @@ export function useSsoLogin(opts) {
     if (!adapter) return undefined
 
     let cancelled = false
-    // caps 兜底：未显式传时从浏览器判定，避免站点忘记传导致默认成 PC（漏终端）
-    const caps = cur.caps || (typeof window !== 'undefined' ? capsFromBrowser(window) : undefined)
+    // caps 由调用方用 @hxym18/env 计算后传入；漏传会默认成 PC（漏终端），开发期告警一次。
+    if (typeof window !== 'undefined' && !cur.caps && !warnedRef.current) {
+      warnedRef.current = true
+      console.warn('[useSsoLogin] 未传 caps：将按 PC 处理；请用 @hxym18/env 的 capabilities() 计算后传入（否则微信内/手机会漏）')
+    }
     const controller = createLoginController({
       authOrigin: cur.authOrigin,
       cookieName: cur.cookieName,
-      caps,
+      caps: cur.caps,
       adapter,
       api:
         cur.api ||
