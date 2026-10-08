@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-10-08
+
+### Added
+
+- `typesVersions`：为经典 `moduleResolution: node` 的消费方（如 Taro 项目）补子路径类型映射；否则 `@hxym18/auth/core` 等子路径类型在 `exports` map 下解析不到。
+
 ## [0.1.2] - 2026-10-08
 
 ### Fixed
