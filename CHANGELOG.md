@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-08
+
+### Fixed
+
+- `next`：`resolveIdentity` 返回非法 uid（不满足会话值形态 `v1.<uid>.<iat>.<sig>`）时，不再把 `issueSession` 的 TypeError 变成未捕获的裸 500；改为受控 `500 { ok:false, error:'身份锚定异常' }`。
+- `react`：`useSsoLogin` 改为在 effect 内创建控制器（每次 effect 运行一个实例），修复 React 18 StrictMode「挂载→清理→再挂载」复用已 dispose 控制器、导致回跳消费与轮询静默失效的问题；`opts` 经 ref 取最新，effect 依赖收敛到原始值（api/adapter 宜传引用稳定对象）。
+
 ## [0.1.1] - 2026-10-08
 
 ### Added

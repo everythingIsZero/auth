@@ -222,6 +222,16 @@ test('wxPoll：扫码昵称/头像与来源透传给 resolveIdentity（各站建
   assert.equal((await res.json()).user.displayName, '灰邪')
 })
 
+test('issue：resolveIdentity 返回非法 uid（过短）→ 受控 500，不抛异常', async () => {
+  stubFetch(() => jsonResponse({ ok: true, openid: 'openid-x' }))
+  const routes = createAuthRoutes(baseConfig({ resolveIdentity: () => ({ uid: 'short' }) }))
+  const res = await routes.ssoVerify(
+    new Request('http://x/api/auth/sso-verify', { method: 'POST', body: JSON.stringify({ ticket: 'ab'.repeat(24) }) }),
+  )
+  assert.equal(res.status, 500)
+  assert.equal((await res.json()).ok, false)
+})
+
 test('userPayload：resolveIdentity 返回的 avatar 透传到响应 user.avatar（前端免再调 /me）', async () => {
   stubFetch(() => jsonResponse({ ok: true, status: 'ok', openid: 'openid-av', nickname: '灰邪', avatar: 'https://a.b/av.png' }))
   const routes = createAuthRoutes(

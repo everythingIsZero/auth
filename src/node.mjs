@@ -166,7 +166,7 @@ export async function callAuthServer(baseUrl, path, payload, opts = {}) {
 export const SESSION_VERSION = 'v1'
 
 /** uid 白字：与 hmd session.ts verify 同口径（字母数字 + - _，8..64） */
-const SESSION_UID_RE = /^[A-Za-z0-9_-]{8,64}$/
+export const SESSION_UID_RE = /^[A-Za-z0-9_-]{8,64}$/
 /** payload 形态：v1.<uid>.<iat 秒级整数>（签名前原文，uid 不含 '.'） */
 const SESSION_PAYLOAD_RE = /^v1\.([^.]+)\.(\d+)$/
 

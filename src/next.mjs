@@ -20,7 +20,7 @@
  * 禁在代码里按站名分支。
  */
 import { APP_SESSION_COOKIE, SESSION_TTL_SEC, isTicket } from './core.mjs'
-import { callAuthServer, issueSession } from './node.mjs'
+import { callAuthServer, issueSession, SESSION_UID_RE } from './node.mjs'
 
 /** 统一 no-store（票根/会话响应一律不可缓存） */
 const NO_STORE = { 'cache-control': 'no-store' }
@@ -152,6 +152,11 @@ export function createAuthRoutes(config) {
   async function issue(openid, source, extra, profile) {
     const ident = await admit(openid, source, profile)
     if (!ident) return json(deniedBody(), 403)
+    // uid 必须满足会话值形态（v1.<uid>.<iat>.<sig>）；否则 issueSession 会抛异常打出裸 500。
+    // 受控失败：报「身份锚定异常」，不把 resolveIdentity 的返回值问题暴露成未捕获错误。
+    if (typeof ident.uid !== 'string' || !SESSION_UID_RE.test(ident.uid)) {
+      return json({ ok: false, error: '身份锚定异常' }, 500)
+    }
     const secret = secretOf()
     if (!secret) return json({ ok: false, error: '会话密钥未配置' }, 503)
     const { value, maxAgeSec } = issueSession(ident.uid, { secret, ttlSec })

@@ -1,6 +1,6 @@
 {
   "name": "@hxym18/auth",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "统一登录客户端：框架无关登录控制器（core/controller）+ React/Taro 适配 + Next 服务端路由工厂（原 @app/auth 升级）",
   "type": "module",
   "license": "MIT",
