@@ -73,6 +73,22 @@ const login = createTaroLogin({ Taro, isH5, caps: capabilities({ ua: '...' }), a
 
 小程序端（`isH5 !== true`）adapter 惰性：读不到全域 cookie、不跳转、不抛错，登录由小程序身份源自行处理。
 
+## 默认皮肤（可选，开箱即用）
+
+不想自己画登录 UI 的站，直接用弹层（内部已接 `useSsoLogin`）：
+
+```jsx
+'use client'
+import { SsoLoginModal } from '@hxym18/auth/ui'
+import { capabilities } from '@hxym18/env'
+
+const caps = capabilities({ ua: navigator.userAgent, maxTouchPoints: navigator.maxTouchPoints })
+
+<SsoLoginModal open={open} onClose={() => setOpen(false)} caps={caps} onSuccess={() => location.reload()} />
+```
+
+按端自动显示：**PC=二维码**、**手机浏览器=配对码文字**、**微信内=「一键登录」按钮**；可选 `title` / `hint` / `devLoginLabel`。样式走内联 + CSS 变量（`--sso-accent` / `--sso-bg` / `--sso-fg` 可覆盖），**零 antd/tailwind 依赖**。仅 React DOM，小程序端（Taro weapp）不适用。
+
 ## 边界
 
 - 不碰各产品业务数据、鉴权语义与界面。

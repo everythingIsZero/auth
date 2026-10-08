@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-08
+
+### Added
+
+- `ui` 出口：默认登录皮肤 `SsoLoginPanel`（内层面板）与 `SsoLoginModal`（弹层）——按端显示二维码 / 配对码文字 / 一键登录按钮；零 antd/tailwind 依赖，样式内联 + CSS 变量可覆盖。仅 React DOM（小程序端不适用）。
+
 ## [0.1.3] - 2026-10-08
 
 ### Added
