@@ -76,6 +76,13 @@ export function LoginPanel() {
 
 站点唯一业务回调 = `resolveIdentity(openid, ctx)`（openid → 本站 user）。`session.secret` **不传** = 装配错误（抛 `TypeError`）；**取值为空** = 运行期缺配，fail-closed 返 503。
 
+**会话投递 `session.deliver`**（缺省 `cookie`）：
+- `cookie`：`Set-Cookie`（Next 站现状）。
+- `token`：响应带 `{ token }`、不设 cookie——供 **Bearer 到处用**的站（Taro/Hono token 模型）。
+- `both`：两者都给。
+
+验证侧用 `@hxym18/auth/node` 的 `readSession(value, { secret })`（cookie 值 / Bearer token 通用）。
+
 ### 微信小程序（weapp）
 
 核心**已内置** `POST /api/auth/weapp`（`weappVerify`）：`Taro.login` code → `jscode2session` → **同一个 `resolveIdentity`** → 签 token（weapp 无 cookie）。站点**无需自写锚定/换码**。

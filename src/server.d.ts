@@ -41,6 +41,11 @@ export type AuthRoutesConfig = {
     ttlSec?: number
     /** 会话 cookie 名；缺省 app_session */
     cookieName?: string
+    /**
+     * 会话投递方式：'cookie'（缺省，Set-Cookie）| 'token'（响应带 token，供 Bearer 模型）| 'both'。
+     * 验证侧用 `@hxym18/auth/node` 的 `readSession(value, { secret })`。
+     */
+    deliver?: 'cookie' | 'token' | 'both'
   }
   /** 锚定器类型；缺省 'identity' */
   anchor?: 'identity' | 'allowlist' | 'first-login'

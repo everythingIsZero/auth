@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-10
+
+### Added
+
+- `session.deliver`（`cookie` | `token` | `both`，缺省 `cookie`）：会话可投递为响应 `{ token }`（不设 cookie），供「Bearer 到处用」的站（Taro/Hono token 模型）——解决与 cookie-session 模型的不匹配。验证侧用 `@hxym18/auth/node` 的 `readSession`（cookie 值 / Bearer token 通用）。
+
 ## [0.4.0] - 2026-10-10
 
 ### Added

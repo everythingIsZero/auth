@@ -126,3 +126,33 @@ test('server：sso 路径 unionid-ready——门面返回 unionid 即透传给 r
   assert.equal(res.status, 200)
   assert.equal(seen.unionid, 'u-sso', '门面返回 unionid 应透传，站点无需改核心')
 })
+
+test('server：session.deliver=token → 响应带 token、不设 cookie（Bearer 模型）', async () => {
+  stubFetch(() => jsonResponse({ ok: true, openid: 'openid-1' }))
+  const routes = createAuthServer({
+    session: { secret: 's', deliver: 'token' },
+    authServer: { url: 'http://x', secret: 'k' },
+  })
+  const res = await routes.ssoVerify(new Request('http://x/', { method: 'POST', body: JSON.stringify({ ticket: TICKET }) }))
+  assert.equal(res.status, 200)
+  const body = await res.json()
+  assert.equal(typeof body.token, 'string')
+  assert.match(body.token, /^v1\./)
+  assert.equal(res.headers.get('set-cookie'), null, 'token 模式不设 cookie')
+})
+
+test('server：session.deliver=both → cookie + token 都给', async () => {
+  stubFetch(() => jsonResponse({ ok: true, openid: 'openid-1' }))
+  const routes = createAuthServer({
+    session: { secret: 's', deliver: 'both' },
+    authServer: { url: 'http://x', secret: 'k' },
+  })
+  const res = await routes.ssoVerify(new Request('http://x/', { method: 'POST', body: JSON.stringify({ ticket: TICKET }) }))
+  assert.equal(res.status, 200)
+  assert.match(res.headers.get('set-cookie'), /^app_session=/)
+  assert.equal(typeof (await res.json()).token, 'string')
+})
+
+test('server：session.deliver 非法 → 装配抛错', () => {
+  assert.throws(() => createAuthServer({ session: { secret: 's', deliver: 'nope' } }), /deliver/)
+})

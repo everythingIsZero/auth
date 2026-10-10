@@ -104,6 +104,17 @@ export function createAuthServer(config) {
   const cookieName = session.cookieName || APP_SESSION_COOKIE
   const ttlSec = session.ttlSec || SESSION_TTL_SEC
   /**
+   * 会话投递方式：
+   *   'cookie'（缺省，向后兼容 Next 站）：Set-Cookie。
+   *   'token' ：响应带 `{ token }`，不设 cookie——供「Bearer 到处用」的站（如 Taro/Hono token 模型）。
+   *   'both'  ：既 Set-Cookie 也回 `{ token }`。
+   * 验证侧用 `@hxym18/auth/node` 的 `readSession(value, { secret })`（cookie 值或 Bearer token 通用）。
+   */
+  const deliver = session.deliver || 'cookie'
+  if (!['cookie', 'token', 'both'].includes(deliver)) {
+    throw new TypeError(`createAuthServer: 未知 session.deliver「${deliver}」（cookie|token|both）`)
+  }
+  /**
    * 会话密钥按请求取值：允许传函数，则每次请求重新读 env。
    * 密钥是「运行期才注入」的环境变量，装配期往往读不到；缺配按 fail-closed 返 503，不签任何会话。
    */
@@ -179,13 +190,17 @@ export function createAuthServer(config) {
     }
   }
 
-  /** 认人成功后的收尾（cookie 通道）：锚定 + 签会话 + Set-Cookie。 */
+  /** 认人成功后的收尾：锚定 + 签会话 + 按 `deliver` 投递（cookie / token / both）。 */
   async function issue(openid, source, extra, profile) {
     const r = await resolveAndIssue(openid, source, profile)
     if (!r.ok) return json(r.body, r.status)
-    const secure = envGet('NODE_ENV') === 'production'
-    const res = json({ ok: true, ...(extra || {}), user: r.user })
-    res.headers.append('set-cookie', sessionCookieHeader(cookieName, r.value, r.maxAgeSec, secure))
+    const body = { ok: true, ...(extra || {}), user: r.user }
+    if (deliver !== 'cookie') body.token = r.value
+    const res = json(body)
+    if (deliver !== 'token') {
+      const secure = envGet('NODE_ENV') === 'production'
+      res.headers.append('set-cookie', sessionCookieHeader(cookieName, r.value, r.maxAgeSec, secure))
+    }
     return res
   }
 
