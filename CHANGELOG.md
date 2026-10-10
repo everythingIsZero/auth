@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-10
+
+### Fixed
+
+- `next.d.ts` 补 `getSession` 导出（`next.mjs` 已再导出，类型此前缺失）。
+
 ## [0.6.0] - 2026-10-10
 
 ### Added
