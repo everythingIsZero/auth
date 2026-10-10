@@ -28,7 +28,7 @@
 ## 安装
 
 ```bash
-pnpm add github:everythingIsZero/auth#v0.4.0
+pnpm add github:everythingIsZero/auth#v0.6.0
 ```
 
 **能力位依赖**：控制器的 `caps` 建议由 [`@hxym18/env`](../env) 计算后注入（本包不自判 UA）：

@@ -4,5 +4,6 @@
 export {
   ANCHORS,
   createAuthServer as createAuthRoutes,
+  getSession,
 } from './server'
 export type { ResolveIdentity, AuthRoutesConfig, AuthRoutes } from './server'
