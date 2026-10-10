@@ -8,6 +8,8 @@
 
 ## 出口
 
+> 出口面自 **v0.6.0** 起**稳定**；后续新增只 additive（新出口/可选配置），**不破坏已有站**。
+
 | 出口 | 运行时 | 职责 |
 |---|---|---|
 | `@hxym18/auth/server` | 服务端（框架无关；**运行时限 Node**） | `createAuthServer`（核心）+ `getSession`（读 cookie/Bearer → uid）。Next/Hono 薄适配；Edge/CF 需自备签名 |
