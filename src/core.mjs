@@ -1,8 +1,7 @@
 /**
  * core.mjs — @app/auth 同构层（零依赖、纯净、可在 Edge / 浏览器 / Node 跑）
  *
- * 收敛票根格式、cookie 名、provider 名、scene 格式、SSO 跳转与 redirect 白名单
- * （单源 docs/platform-standards.md §3、docs/sso-login-spec.md）。
+ * 收敛票根格式、cookie 名、provider 名、scene 格式、SSO 跳转与 redirect 白名单。
  * 本层不 import node:crypto / node:buffer，只用 Web 标准（URL / RegExp），
  * 故 Next.js Edge runtime 可直载。需要 Node 密码学原语（sha1 验签 / HMAC）的
  * 消费方改用同包的 node.mjs（Node-only）。
@@ -11,9 +10,8 @@
  *   - SSO_TICKET_COOKIE / SESSION_TTL_SEC / isTicket / 白名单 / SSO 跳转
  *     ← deploy/auth/index.html（COOKIE_NAME='sl_web_session'、SESSION_RE=/^[0-9a-f]{48}$/i、
  *       max-age=172800、AUTH_ORIGIN、DEFAULT_REDIRECT、readRedirect 的 https+host 白名单）
- *     ← docs/sso-login-spec.md「硬约定」
  *   - SSO_SCENE_PREFIX ← deploy/auth-server/index.js（SSO_SCENE_PREFIX='ssologin-'）
- *   - WECHAT_PROVIDER ← docs/platform-standards.md §3（identities(provider='wechat', …)）
+ *   - WECHAT_PROVIDER ← identities(provider='wechat', …)
  *   - CLOUD_ENV_ID ← deploy/auth/index.html（CLOUD_ENV='cloud1-5gmlb2qmf0f1963b'，
  *       auth 站云环境；与 @app/ai-client DEFAULT_ENV_ID 同环境）
  */
@@ -21,7 +19,7 @@
 /** SSO 全域票根 Cookie 名（非 httpOnly，业务站前端 JS 需读来换会话；单源 deploy/auth/index.html） */
 export const SSO_TICKET_COOKIE = 'sl_web_session'
 
-/** 应用统一会话 Cookie 名（@app/auth 收敛后的服务端会话层；单源 docs/platform-standards.md §3） */
+/** 应用统一会话 Cookie 名（@app/auth 收敛后的服务端会话层） */
 export const APP_SESSION_COOKIE = 'app_session'
 
 /**
@@ -85,7 +83,7 @@ export function isSsoScene(v) {
   return typeof v === 'string' && v.startsWith(SSO_SCENE_PREFIX)
 }
 
-/** 微信 provider 名（identities.provider 单值；单源 docs/platform-standards.md §3） */
+/** 微信 provider 名（identities.provider 单值） */
 export const WECHAT_PROVIDER = 'wechat'
 
 /** auth 中转站 origin（SSO 动线入口；单源 deploy/auth/index.html） */

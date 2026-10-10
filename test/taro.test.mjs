@@ -5,7 +5,7 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { createTaroLogin } from '../src/taro.mjs'
+import { createTaroLogin, createTaroApi } from '../src/taro.mjs'
 
 const NOOP_API = {
   config: async () => ({ wxEnabled: true, devLogin: false }),
@@ -36,4 +36,53 @@ test('createTaroLogin：H5 委托 window，startSso 跳到门面', () => {
   const c = createTaroLogin({ isH5: true, win, authOrigin: 'https://auth.hxym18.com', caps: { isWechat: true, isMobile: true }, api: NOOP_API })
   c.startSso()
   assert.match(win.location.href, /^https:\/\/auth\.hxym18\.com\/\?redirect=/)
+})
+
+test('createTaroApi：缺 request 抛错（不猜全局 fetch）', () => {
+  assert.throws(() => createTaroApi({}), /request is required/)
+})
+
+test('createTaroApi：映射五个端点（方法 + poll scene 编码）', async () => {
+  const seen = []
+  const api = createTaroApi({
+    request: (o) => {
+      seen.push(o)
+      return Promise.resolve({ statusCode: 200, data: { ok: true } })
+    },
+  })
+  await api.config()
+  await api.qrcode()
+  await api.poll('ssologin-' + 'a'.repeat(24))
+  await api.verify({ ticket: 'x' })
+  await api.devLogin()
+  assert.deepEqual(seen.map((o) => o.method), ['GET', 'GET', 'GET', 'POST', 'POST'])
+  assert.equal(seen[0].url, '/api/auth/config')
+  assert.equal(seen[1].url, '/api/auth/wx-qrcode')
+  assert.match(seen[2].url, /^\/api\/auth\/wx-poll\?scene=ssologin-/)
+  assert.equal(seen[3].data.ticket, 'x')
+  assert.equal(seen[0].header['content-type'], 'application/json')
+})
+
+test('createTaroLogin：接 createTaroApi 后 H5 start 会取码（端到端接线）', async () => {
+  const seen = []
+  const api = createTaroApi({
+    request: (o) => {
+      seen.push(o)
+      const data = o.url.includes('config')
+        ? { ok: true, wxEnabled: true, devLogin: false }
+        : { ok: true, scene: 'ssologin-' + 'a'.repeat(24), qrUrl: 'https://qr/1' }
+      return Promise.resolve({ statusCode: 200, data })
+    },
+  })
+  const win = {
+    location: { href: 'https://nt.hxym18.com/' },
+    document: { cookie: '' },
+    history: { replaceState() {} },
+    setTimeout,
+    clearTimeout,
+  }
+  const c = createTaroLogin({ isH5: true, win, caps: { isWechat: false, isMobile: false }, api })
+  await c.start()
+  assert.ok(seen.some((o) => o.url.includes('wx-qrcode')), '应请求取码端点')
+  c.dispose()
 })

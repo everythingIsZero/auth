@@ -64,5 +64,19 @@ export function createFetchApi(opts?: {
   configUrl?: string
   devLoginUrl?: string
 }): LoginApi
+/** Taro 版 api：注入 Taro.request 形状的 request，本包不依赖 @tarojs/taro */
+export function createTaroApi(opts: {
+  request: (opts: {
+    url: string
+    method: string
+    header: Record<string, string>
+    data?: any
+  }) => Promise<{ statusCode?: number; data?: any }>
+  qrcodeUrl?: string
+  pollUrl?: string
+  verifyUrl?: string
+  configUrl?: string
+  devLoginUrl?: string
+}): LoginApi
 export function browserAdapter(win?: any): LoginAdapter
 export function taroAdapter(opts?: { isH5?: boolean; win?: any }): LoginAdapter

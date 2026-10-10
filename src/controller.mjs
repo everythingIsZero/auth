@@ -59,6 +59,41 @@ export function createFetchApi(opts) {
 }
 
 /**
+ * 造 Taro 版 api（与 createFetchApi 对齐，站点同源相对路径）。
+ * 注入 `request`（Taro.request 的形状），本包不依赖 @tarojs/taro：
+ *   request({ url, method, header, data }) → Promise<{ statusCode, data }>
+ * 小程序无标准 fetch，故 Taro 侧不能直接用 createFetchApi。
+ *
+ * @param {{ request: (opts: { url: string, method: string, header: Record<string,string>, data?: any }) => Promise<{ statusCode?: number, data?: any }>, qrcodeUrl?: string, pollUrl?: string, verifyUrl?: string, configUrl?: string, devLoginUrl?: string }} opts
+ * @returns {{ qrcode: Function, poll: Function, verify: Function, config: Function, devLogin: Function }}
+ */
+export function createTaroApi(opts) {
+  const o = opts || {}
+  const request = o.request
+  if (typeof request !== 'function') {
+    throw new TypeError('createTaroApi: request is required（传 Taro.request 的包装函数）')
+  }
+  const urls = {
+    qrcode: o.qrcodeUrl || DEFAULT_URLS.qrcode,
+    poll: o.pollUrl || DEFAULT_URLS.poll,
+    verify: o.verifyUrl || DEFAULT_URLS.verify,
+    config: o.configUrl || DEFAULT_URLS.config,
+    devLogin: o.devLoginUrl || DEFAULT_URLS.devLogin,
+  }
+  const call = (url, method, data) =>
+    Promise.resolve(request({ url, method, header: { 'content-type': 'application/json' }, data })).then(
+      (r) => (r && r.data) || {},
+    )
+  return {
+    qrcode: () => call(urls.qrcode, 'GET'),
+    poll: (scene) => call(`${urls.poll}?scene=${encodeURIComponent(scene)}`, 'GET'),
+    verify: (body) => call(urls.verify, 'POST', body || {}),
+    config: () => call(urls.config, 'GET'),
+    devLogin: () => call(urls.devLogin, 'POST', {}),
+  }
+}
+
+/**
  * @param {{
  *   adapter: { readCookie: (name: string) => string, currentUrl: () => string, replaceUrl: (url: string) => void, navigate: (url: string) => void, setTimeout: (fn: Function, ms: number) => any, clearTimeout: (id: any) => void },
  *   api: { config: Function, qrcode: Function, poll: Function, verify: Function, devLogin: Function },

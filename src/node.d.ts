@@ -136,3 +136,36 @@ export declare function readLegacySession(
   cookieHeader: unknown,
   opts?: ReadSessionOptions
 ): LegacySession | null
+
+/* ---- 微信小程序换码（code → openid/unionid） ---- */
+
+/** jscode2session 默认超时（ms） */
+export declare const WEAPP_TIMEOUT_MS: 5000
+
+/** 换码失败错误码：not_configured 未配 appid/secret · bad_code 入参非法 · network 网络/超时 · upstream 非 200/无 openid · bad_json 非 JSON · invalid_code 微信 errcode */
+export type WeappExchangeError =
+  | 'not_configured'
+  | 'bad_code'
+  | 'network'
+  | 'upstream'
+  | 'bad_json'
+  | 'invalid_code'
+
+export interface WeappExchangeOptions {
+  code?: string
+  appId?: string
+  appSecret?: string
+  /** 超时毫秒，缺省 5000 */
+  timeoutMs?: number
+}
+
+export type WeappExchangeResult =
+  | { ok: true; openid: string; unionid: string | null; sessionKey: string | null }
+  | { ok: false; error: WeappExchangeError; errcode?: number }
+
+/**
+ * 用 `Taro.login` 的 code 换 openid / unionid（微信 `jscode2session`）。
+ * 失败归一为 `{ ok:false, error }`，不抛错。绑定同一微信开放平台后返回 `unionid`（统一账号的锚键）。
+ */
+export declare function exchangeWeappCode(opts: WeappExchangeOptions): Promise<WeappExchangeResult>
+

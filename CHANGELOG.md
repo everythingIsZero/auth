@@ -4,6 +4,31 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-10
+
+### Added
+
+- **`@hxym18/auth/server`**：`createAuthServer(config)` —— 登录服务端**框架无关核心**（Web `Request`→`Response`）。`env` 可注入（默认 `process.env`）；**框架无关但运行时限 Node**（签名依赖 `node:crypto`，Edge/CF 需自备签名）。
+- **`@hxym18/auth/hono`**：`createHonoAuthRoutes(config)` —— 核心的 Hono 薄适配（Context→Request，几行）。
+- **小程序登录已并入核心**：`POST /api/auth/weapp`（`weappVerify`）—— `Taro.login` code → `jscode2session` → **复用同一个 `resolveIdentity`** → 签 token；站点不再自写锚定/换码/签会话。
+- `resolveIdentity` 的 `ctx` 增 `unionid`（微信 unionid，绑定开放平台时有值）+ `source` 增 `'weapp'`：用 `ctx.unionid ?? openid` 归一 H5 与小程序身份。
+- `@hxym18/auth/node`：`exchangeWeappCode({ code, appId, appSecret })` —— 微信小程序换码原语（errcode 分支/超时/**unionid 读取**），失败归一 `{ok:false,error}`。
+- `@hxym18/auth/taro`：`createWeappLogin({ Taro, request, store })` —— 小程序登录接线（`Taro.login` 取 code → 站点端点 → 存 token；通道故障不清已有 token）。
+- `createTaroApi({ request })`：Taro 版 api 工厂（注入 `Taro.request` 形状的 request），与 `createFetchApi` 对齐。
+
+### Changed
+
+- `@hxym18/auth/next` 变**薄层**：登录逻辑迁至 `server.mjs`，`createAuthRoutes` 即核心的 Next 出口名（**出口签名不变**，现有测试全绿）。
+- 门面/小程序配置与 `NODE_ENV`（Secure cookie）改为**按请求**解析（旧 `next.mjs` 中门面配置为装配期冻结、Secure 按请求；抽取后统一为按请求，避免运行期注入的 env 读不到）。
+
+### Fixed
+
+- `exchangeWeappCode`：响应体为 `null`/非对象时归一 `bad_json`（原会抛 `TypeError`，违反「不抛错」契约）。
+
+### Docs
+
+- README 补「框架无关核心 + 薄适配」出口表（换框架只换适配，不重写登录逻辑）；明确**运行时限 Node**；Taro 段补小程序 `createWeappLogin` 与核心 `weappVerify`。
+
 ## [0.3.3] - 2026-10-08
 
 ### Changed

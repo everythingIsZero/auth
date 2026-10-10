@@ -1,7 +1,7 @@
 {
   "name": "@hxym18/auth",
-  "version": "0.3.3",
-  "description": "统一登录客户端：框架无关登录控制器（core/controller）+ React/Taro 适配 + Next 服务端路由工厂（原 @app/auth 升级）",
+  "version": "0.4.0",
+  "description": "统一登录客户端：框架无关服务端核心（server）+ Next/Hono 薄适配 + 小程序（weapp）登录 + 框架无关控制器（core/controller）+ React/Taro 适配（原 @app/auth 升级）",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -31,6 +31,14 @@
       "types": "./src/next.d.ts",
       "default": "./src/next.mjs"
     },
+    "./server": {
+      "types": "./src/server.d.ts",
+      "default": "./src/server.mjs"
+    },
+    "./hono": {
+      "types": "./src/hono.d.ts",
+      "default": "./src/hono.mjs"
+    },
     "./controller": {
       "types": "./src/controller.d.ts",
       "default": "./src/controller.mjs"
@@ -59,6 +67,12 @@
       ],
       "next": [
         "src/next.d.ts"
+      ],
+      "server": [
+        "src/server.d.ts"
+      ],
+      "hono": [
+        "src/hono.d.ts"
       ],
       "controller": [
         "src/controller.d.ts"

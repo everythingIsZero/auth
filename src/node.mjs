@@ -1,7 +1,7 @@
 /**
  * node.mjs — @app/auth 服务端密码学原语（Node-only，import node:crypto）
  *
- * 收敛三套服务端能力（单源 docs/platform-standards.md §3）：
+ * 收敛三套服务端能力：
  *   ① 微信回调同款 URL 验签：sha1([token,timestamp,nonce] 字典序拼接)
  *      ← apps/hmd/src/lib/wechat-callback.ts verifySignature
  *      ← apps/hmd/src/lib/admin-auth.ts checkAdminSignature（复用同款）
@@ -315,4 +315,73 @@ export function readLegacySession(cookieHeader, opts) {
     }
   }
   return null
+}
+
+/* -------------------------------------------------------------------------- *
+ * ③d. 微信小程序换码（code → openid/unionid）——服务端唯一实现，各站复用
+ *
+ * 为什么抽出来：`Taro.login()` 拿 code → `jscode2session` 换 openid 这段**每个 Taro 站一模一样**，
+ * 各站重写会漂移（超时、errcode 分支、unionid 漏读）。站点只需在 handler 里调本函数，
+ * 再自己做「锚定（resolveIdentity）+ 签本站会话」。
+ *
+ * 契约（微信官方 /sns/jscode2session）：
+ *   - 失败时 **HTTP 也是 200，靠 errcode 表达**（40029=code 无效、40163=code 已用等）
+ *   - 绑定同一微信开放平台后返回 `unionid`（否则无）—— 统一账号的锚键
+ * 不抛错，返回判别式结果，站点按自身错误模型映射。
+ * -------------------------------------------------------------------------- */
+
+/** jscode2session 默认超时（ms） */
+export const WEAPP_TIMEOUT_MS = 5000
+
+/**
+ * 用 `Taro.login` 的 code 换 openid / unionid。
+ * @param {{ code?: string, appId?: string, appSecret?: string, timeoutMs?: number }} opts
+ * @returns {Promise<
+ *   { ok: true, openid: string, unionid: string | null, sessionKey: string | null } |
+ *   { ok: false, error: 'not_configured' | 'bad_code' | 'network' | 'upstream' | 'bad_json' | 'invalid_code', errcode?: number }
+ * >}
+ */
+export async function exchangeWeappCode(opts) {
+  const o = opts || {}
+  const appId = o.appId
+  const appSecret = o.appSecret
+  if (typeof appId !== 'string' || !appId || typeof appSecret !== 'string' || !appSecret) {
+    return { ok: false, error: 'not_configured' }
+  }
+  const code = o.code
+  if (typeof code !== 'string' || !code.trim() || code.length > 128) return { ok: false, error: 'bad_code' }
+  if (typeof fetch !== 'function') return { ok: false, error: 'network' }
+  const timeoutRaw = o.timeoutMs != null ? Number(o.timeoutMs) : WEAPP_TIMEOUT_MS
+  const timeoutMs = Number.isFinite(timeoutRaw) && timeoutRaw > 0 ? timeoutRaw : WEAPP_TIMEOUT_MS
+  const url =
+    'https://api.weixin.qq.com/sns/jscode2session' +
+    `?appid=${encodeURIComponent(appId)}` +
+    `&secret=${encodeURIComponent(appSecret)}` +
+    `&js_code=${encodeURIComponent(code.trim())}` +
+    '&grant_type=authorization_code'
+
+  let res
+  try {
+    res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(timeoutMs) })
+  } catch {
+    return { ok: false, error: 'network' }
+  }
+  if (!res.ok) return { ok: false, error: 'upstream' }
+  let body
+  try {
+    body = await res.json()
+  } catch {
+    return { ok: false, error: 'bad_json' }
+  }
+  if (!body || typeof body !== 'object') return { ok: false, error: 'bad_json' }
+  if (typeof body.errcode === 'number' && body.errcode !== 0) {
+    return { ok: false, error: 'invalid_code', errcode: body.errcode }
+  }
+  if (typeof body.openid !== 'string' || !body.openid) return { ok: false, error: 'upstream' }
+  return {
+    ok: true,
+    openid: body.openid,
+    unionid: typeof body.unionid === 'string' && body.unionid ? body.unionid : null,
+    sessionKey: typeof body.session_key === 'string' ? body.session_key : null,
+  }
 }

@@ -218,7 +218,7 @@ test('wxPoll：扫码昵称/头像与来源透传给 resolveIdentity（各站建
   )
   const res = await routes.wxPoll(new Request('http://x/api/auth/wx-poll?scene=ssologin-' + 'a'.repeat(24)))
   assert.equal(res.status, 200)
-  assert.deepEqual(seen, { openid: 'openid-3', source: 'qr', nickname: '灰邪', avatar: 'https://a.b/av.png' })
+  assert.deepEqual(seen, { openid: 'openid-3', source: 'qr', nickname: '灰邪', avatar: 'https://a.b/av.png', unionid: null })
   assert.equal((await res.json()).user.displayName, '灰邪')
 })
 
@@ -268,7 +268,7 @@ test('ssoVerify：org 站凭票根尽力补档案，门面 profile 空对象时�
   assert.ok(profileCall, 'org 站应调用 profile 端点补资料')
   assert.equal(profileCall.body.ticket, 'ab'.repeat(24))
   assert.equal(profileCall.body.org, 'wordinput')
-  assert.deepEqual(seen, { openid: 'openid-sso-1', source: 'sso', nickname: null, avatar: null })
+  assert.deepEqual(seen, { openid: 'openid-sso-1', source: 'sso', nickname: null, avatar: null, unionid: null })
 })
 
 test('ssoVerify：门面 profile 端点故障 → 静默降级照常签发会话', async () => {
