@@ -4,7 +4,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { exchangeWeappCode } from '../src/node.mjs'
-import { createWeappLogin } from '../src/taro.mjs'
+import { createWeappLogin, createWeappProfile } from '../src/taro.mjs'
+import { profileFallback, DEFAULT_DISPLAY_NAME } from '../src/core.mjs'
 
 const OK = { code: 'c', appId: 'a', appSecret: 's' }
 
@@ -98,4 +99,28 @@ test('createWeappLogin：Taro.login 无 code → false（不请求）', async ()
   })
   assert.equal(await login(), false)
   assert.equal(called, false)
+})
+
+test('profileFallback：昵称空 → 微信用户；头像空 → ""（各端一致）', () => {
+  assert.deepEqual(profileFallback({ nickname: '', avatar: '' }), { nickname: DEFAULT_DISPLAY_NAME, avatar: '' })
+  assert.deepEqual(profileFallback({ nickname: '  灰邪 ', avatar: 'u' }), { nickname: '灰邪', avatar: 'u' })
+  assert.deepEqual(profileFallback(), { nickname: DEFAULT_DISPLAY_NAME, avatar: '' })
+})
+
+test('createWeappProfile：上传临时头像 + 归一资料（昵称空回退）', async () => {
+  const p = createWeappProfile({
+    upload: async (fp) => {
+      assert.equal(fp, '/tmp/a.png')
+      return 'https://cdn/a.png'
+    },
+  })
+  assert.deepEqual(await p.save({ avatarFilePath: '/tmp/a.png', nickname: '灰邪' }), {
+    nickname: '灰邪',
+    avatar: 'https://cdn/a.png',
+  })
+  assert.deepEqual(await p.save({ nickname: '' }), { nickname: '微信用户', avatar: '' })
+})
+
+test('createWeappProfile：缺 upload 抛错', () => {
+  assert.throws(() => createWeappProfile({}), /upload is required/)
 })

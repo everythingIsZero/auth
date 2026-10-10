@@ -6,6 +6,7 @@
  * api 需由调用方用 Taro.request 自备——用 `createTaroApi({ request })` 接线，不必手写五个端点。
  */
 import { createLoginController, taroAdapter } from './controller.mjs'
+import { profileFallback } from './core.mjs'
 
 // 与 createTaroLogin 同出口，方便 Taro 侧一处引入。
 export { createTaroApi } from './controller.mjs'
@@ -72,5 +73,30 @@ export function createWeappLogin(opts) {
     if (!token) return false
     if (store && typeof store.set === 'function') store.set(token)
     return true
+  }
+}
+
+/**
+ * 小程序资料采集接线：微信**不允许**自动拿真实昵称/头像，只能用户主动填
+ * （UI 用 `<button open-type="chooseAvatar">` + `<input type="nickname">`——现行唯一合法入口）。
+ * 本函数只负责「临时头像文件 → 上传 → 归一资料」；UI 由站点自绘。
+ *
+ * @param {{ upload: (filePath: string) => Promise<string> }} opts upload：头像临时路径 → 可访问 URL（站点存储）
+ * @returns {{ save: (input: { avatarFilePath?: string, nickname?: string }) => Promise<{ nickname: string, avatar: string }> }}
+ */
+export function createWeappProfile(opts) {
+  const o = opts || {}
+  if (typeof o.upload !== 'function') {
+    throw new TypeError('createWeappProfile: upload is required（头像临时路径 → URL 的站点上传）')
+  }
+  return {
+    async save(input) {
+      const i = input || {}
+      let avatar = ''
+      if (typeof i.avatarFilePath === 'string' && i.avatarFilePath) {
+        avatar = (await o.upload(i.avatarFilePath)) || ''
+      }
+      return profileFallback({ nickname: i.nickname, avatar })
+    },
   }
 }

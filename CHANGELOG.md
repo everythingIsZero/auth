@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-10
+
+### Added
+
+- `getSession(req, { secret, cookieName })`（`@hxym18/auth/server`）：读 cookie 或 `Authorization: Bearer` → `{ uid, iat } | null`——站点中间件「认人」一步到位。
+- `createWeappProfile({ upload })`（`@hxym18/auth/taro`）：小程序资料采集（临时头像上传 + 归一资料）。
+- `profileFallback(profile)` + `DEFAULT_DISPLAY_NAME`（`@hxym18/auth/core`）：统一资料回退（昵称空 → 「微信用户」）。
+- `createAuthServer` 配置 `loadProfile(uid)`：登录后读回本站资料，weapp 端继承 H5 昵称/头像（resolveIdentity 未给时补）。
+
 ## [0.5.0] - 2026-10-10
 
 ### Added

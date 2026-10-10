@@ -4,8 +4,9 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { createAuthServer } from '../src/server.mjs'
+import { createAuthServer, getSession } from '../src/server.mjs'
 import { createHonoAuthRoutes } from '../src/hono.mjs'
+import { issueSession } from '../src/node.mjs'
 
 const TICKET = 'a'.repeat(48)
 
@@ -155,4 +156,46 @@ test('server：session.deliver=both → cookie + token 都给', async () => {
 
 test('server：session.deliver 非法 → 装配抛错', () => {
   assert.throws(() => createAuthServer({ session: { secret: 's', deliver: 'nope' } }), /deliver/)
+})
+
+test('server：getSession 读 cookie / Bearer → uid；无效/缺失 → null', () => {
+  const { value } = issueSession('user-0001', { secret: 's' })
+  assert.equal(getSession(new Request('http://x/', { headers: { cookie: `app_session=${value}` } }), { secret: 's' }).uid, 'user-0001')
+  assert.equal(getSession(new Request('http://x/', { headers: { authorization: `Bearer ${value}` } }), { secret: 's' }).uid, 'user-0001')
+  assert.equal(getSession(new Request('http://x/'), { secret: 's' }), null)
+  assert.equal(getSession(new Request('http://x/', { headers: { cookie: 'app_session=bad' } }), { secret: 's' }), null)
+  assert.equal(getSession(new Request('http://x/', { headers: { cookie: `app_session=${value}` } }), { secret: 'wrong' }), null)
+})
+
+test('server：loadProfile 读回资料——weapp 继承已存昵称/头像（resolveIdentity 未给时）', async () => {
+  globalThis.fetch = async () => new Response(JSON.stringify({ openid: 'o-weapp' }), { status: 200 })
+  const routes = createAuthServer({
+    session: { secret: 's' },
+    weapp: { appId: 'a', appSecret: 'k' },
+    resolveIdentity: (openid) => ({ uid: 'user-' + openid }),
+    loadProfile: (uid) => ({ displayName: '已存昵称:' + uid, avatar: 'https://a/av.png' }),
+  })
+  const res = await routes.weappVerify(
+    new Request('http://x/api/auth/weapp', { method: 'POST', body: JSON.stringify({ code: 'c' }) }),
+  )
+  const body = await res.json()
+  assert.equal(body.user.displayName, '已存昵称:user-o-weapp')
+  assert.equal(body.user.avatar, 'https://a/av.png')
+})
+
+test('server：loadProfile 故障 → 降级，不阻塞登录', async () => {
+  globalThis.fetch = async () => new Response(JSON.stringify({ openid: 'o-weapp' }), { status: 200 })
+  const routes = createAuthServer({
+    session: { secret: 's' },
+    weapp: { appId: 'a', appSecret: 'k' },
+    resolveIdentity: (openid) => ({ uid: 'user-' + openid, displayName: '锚定名' }),
+    loadProfile: () => {
+      throw new Error('db down')
+    },
+  })
+  const res = await routes.weappVerify(
+    new Request('http://x/api/auth/weapp', { method: 'POST', body: JSON.stringify({ code: 'c' }) }),
+  )
+  assert.equal(res.status, 200)
+  assert.equal((await res.json()).user.displayName, '锚定名')
 })

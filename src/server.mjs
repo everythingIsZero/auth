@@ -14,7 +14,7 @@
  * AUTH_ISSUE_ORG / WEAPP_APPID / WEAPP_SECRET / NODE_ENV。
  */
 import { APP_SESSION_COOKIE, SESSION_TTL_SEC, isTicket } from './core.mjs'
-import { callAuthServer, exchangeWeappCode, issueSession, SESSION_UID_RE } from './node.mjs'
+import { callAuthServer, exchangeWeappCode, issueSession, readCookieValue, readSession, SESSION_UID_RE } from './node.mjs'
 
 /** 统一 no-store（票根/会话响应一律不可缓存） */
 const NO_STORE = { 'cache-control': 'no-store' }
@@ -33,6 +33,28 @@ function json(body, status = 200) {
 /** 会话 cookie 头（httpOnly；生产 Secure；Path=/；SameSite=Lax——与各站存量写法逐字一致） */
 function sessionCookieHeader(name, value, maxAgeSec, secure) {
   return `${name}=${value}; Path=/; HttpOnly;${secure ? ' Secure;' : ''} SameSite=Lax; Max-Age=${maxAgeSec}`
+}
+
+/**
+ * 从请求读会话（「认人」的最后一环，站点中间件用）：
+ * 依次取 cookie（`cookieName`，缺省 `app_session`）或 `Authorization: Bearer <值>`，验签 → `{ uid, iat }`。
+ * 无效/缺失 → null（不抛错）。与 `createAuthServer` 的投递方式（cookie / token / both）配对。
+ * @param {Request} req
+ * @param {{ secret?: string, cookieName?: string }} opts
+ * @returns {{ uid: string, iat: number } | null}
+ */
+export function getSession(req, opts) {
+  const o = opts || {}
+  const secret = o.secret
+  const cookieName = o.cookieName || APP_SESSION_COOKIE
+  if (typeof secret !== 'string' || !secret || !req || !req.headers) return null
+  let value = readCookieValue(req.headers.get('cookie') || '', cookieName)
+  if (!value) {
+    const m = /^Bearer\s+(.+)$/i.exec(req.headers.get('authorization') || '')
+    if (m) value = m[1].trim()
+  }
+  if (!value) return null
+  return readSession(value, { secret })
 }
 
 /**
@@ -87,6 +109,7 @@ function introspectFailure(kind) {
  *   anchor?: 'identity'|'allowlist'|'first-login',
  *   anchorEnv?: string | null,
  *   resolveIdentity?: (openid: string, ctx: { source: 'sso'|'qr'|'weapp', nickname?: string|null, avatar?: string|null, unionid?: string|null }) => Promise<{ uid: string, displayName?: string|null, avatar?: string|null }|null> | { uid: string, displayName?: string|null, avatar?: string|null } | null,
+ *   loadProfile?: (uid: string) => Promise<{ displayName?: string|null, avatar?: string|null }|null> | { displayName?: string|null, avatar?: string|null } | null,
  *   userPayload?: (id: string, displayName?: string|null, avatar?: string|null) => unknown,
  *   env?: Record<string, string | undefined> | ((key: string) => string | undefined)
  * }} config
@@ -131,6 +154,8 @@ export function createAuthServer(config) {
   // 门面/小程序配置**按请求**解析（不装配期冻结），与 session.secret 口径一致。
   const confOf = () => authServerConf(cfg.authServer, envGet)
   const resolveIdentity = cfg.resolveIdentity || null
+  /** 可选：登录后按 uid 读回本站资料（昵称/头像）——weapp 端借此继承 H5 资料，站点无需再写读回。 */
+  const loadProfile = cfg.loadProfile || null
   const userPayload = cfg.userPayload || ((id, displayName, avatar) => ({ id, displayName: displayName || null, avatar: avatar || null }))
 
   /** 403 响应体（不在准入名单）。allowlist 站额外带 `configured` 区分「没配名单」与「不在名单」。 */
@@ -179,14 +204,28 @@ export function createAuthServer(config) {
     const secret = secretOf()
     if (!secret) return { ok: false, status: 503, body: { ok: false, error: '会话密钥未配置' } }
     const { value, maxAgeSec } = issueSession(ident.uid, { secret, ttlSec })
+    // 读回本站资料（若配 loadProfile）：resolveIdentity 未给的字段用站点已存资料补齐（weapp 继承 H5）。
+    let displayName = ident.displayName
+    let avatar = ident.avatar
+    if (loadProfile) {
+      try {
+        const p = await loadProfile(ident.uid)
+        if (p) {
+          if (displayName == null && p.displayName != null) displayName = p.displayName
+          if (avatar == null && p.avatar != null) avatar = p.avatar
+        }
+      } catch {
+        /* 降级：读资料失败不阻塞登录 */
+      }
+    }
     return {
       ok: true,
       uid: ident.uid,
-      displayName: ident.displayName,
-      avatar: ident.avatar,
+      displayName,
+      avatar,
       value,
       maxAgeSec,
-      user: userPayload(ident.uid, ident.displayName, ident.avatar),
+      user: userPayload(ident.uid, displayName, avatar),
     }
   }
 

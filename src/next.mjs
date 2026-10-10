@@ -13,4 +13,4 @@
  *   export const GET = routes.dispatch
  *   export const POST = routes.dispatch
  */
-export { ANCHORS, createAuthServer as createAuthRoutes } from './server.mjs'
+export { ANCHORS, createAuthServer as createAuthRoutes, getSession } from './server.mjs'

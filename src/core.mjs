@@ -132,3 +132,19 @@ export function buildAuthRedirect(redirectUrl, opts) {
   const target = isAllowedRedirect(redirectUrl) ? redirectUrl : fallback
   return `${origin}/?redirect=${encodeURIComponent(target)}`
 }
+
+/** 昵称缺省回退（各端一致；用户没填/微信不给时的显示名） */
+export const DEFAULT_DISPLAY_NAME = '微信用户'
+
+/**
+ * 资料回退（各站统一，别各写各的）：昵称空 → `DEFAULT_DISPLAY_NAME`；头像空 → 空串（站点自行出占位）。
+ * @param {{ nickname?: string|null, avatar?: string|null }} [profile]
+ * @returns {{ nickname: string, avatar: string }}
+ */
+export function profileFallback(profile) {
+  const p = profile || {}
+  const nickname =
+    typeof p.nickname === 'string' && p.nickname.trim() ? p.nickname.trim() : DEFAULT_DISPLAY_NAME
+  const avatar = typeof p.avatar === 'string' && p.avatar ? p.avatar : ''
+  return { nickname, avatar }
+}

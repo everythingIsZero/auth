@@ -10,14 +10,14 @@
 
 | 出口 | 运行时 | 职责 |
 |---|---|---|
-| `@hxym18/auth/server` | 服务端（框架无关；**运行时限 Node**） | `createAuthServer`：登录服务端核心（Web `Request`→`Response`）。Next/Hono 薄适配；Edge/CF 需自备签名 |
+| `@hxym18/auth/server` | 服务端（框架无关；**运行时限 Node**） | `createAuthServer`（核心）+ `getSession`（读 cookie/Bearer → uid）。Next/Hono 薄适配；Edge/CF 需自备签名 |
 | `@hxym18/auth/next` | Next.js 服务端 | `createAuthRoutes`（= 核心的 Next 出口名，薄层） |
 | `@hxym18/auth/hono` | Hono 服务端 | `createHonoAuthRoutes`：核心的 Hono 薄适配（Context→Request，几行） |
 | `@hxym18/auth/node` | Node | 会话签名/验签、`callAuthServer`、`exchangeWeappCode`（小程序换码，含 unionid） |
 | `@hxym18/auth/controller` | 全环境（零框架依赖） | 登录控制器：按端分流、SSO 跳转/回跳、PC 取码轮询、手机配对码、dev-login |
 | `@hxym18/auth/react` | 浏览器 + React | `useSsoLogin` 钩子（接线 + 状态订阅） |
-| `@hxym18/auth/taro` | Taro（H5/小程序） | `createTaroLogin` + `createTaroApi`（H5）；`createWeappLogin`（小程序取 code）；小程序端 controller 惰性 |
-| `@hxym18/auth/core` | 浏览器/Edge | 同构常量与纯函数（票根名/格式、redirect 白名单、`buildAuthRedirect`） |
+| `@hxym18/auth/taro` | Taro（H5/小程序） | `createTaroLogin` + `createTaroApi`（H5）；`createWeappLogin`（取 code）；`createWeappProfile`（资料采集）；小程序端 controller 惰性 |
+| `@hxym18/auth/core` | 浏览器/Edge | 同构常量与纯函数（票根名/格式、redirect 白名单、`buildAuthRedirect`、`profileFallback`） |
 | `@hxym18/auth`（`.`） | Node | `core` + `node` 聚合（含 `node:crypto`，勿在 Edge 引） |
 
 > **换框架不用重写**：登录逻辑只在 `server.mjs` 写一次（Web `Request`/`Response`）。换掉 Next/Hono 时，新框架只需几行适配（`c.req.raw` ↔ `Request`）；不属 Web 标准的框架（Express）用 `@hxym18/auth/server` + 一行 `dispatch`，登录逻辑零改动。
@@ -81,7 +81,9 @@ export function LoginPanel() {
 - `token`：响应带 `{ token }`、不设 cookie——供 **Bearer 到处用**的站（Taro/Hono token 模型）。
 - `both`：两者都给。
 
-验证侧用 `@hxym18/auth/node` 的 `readSession(value, { secret })`（cookie 值 / Bearer token 通用）。
+验证侧用 `@hxym18/auth/node` 的 `readSession(value, { secret })`（cookie 值 / Bearer token 通用），或直接用 `getSession(req, { secret, cookieName })`（读 cookie 或 `Bearer` → `{ uid, iat } | null`）。
+
+**资料读回 `loadProfile(uid)`**（可选）：登录后按 uid 读本站已存资料（昵称/头像）——`resolveIdentity` 未给的字段用它补齐，weapp 端借此**继承 H5 昵称/头像**。故障降级，不阻塞登录。
 
 ### 微信小程序（weapp）
 
@@ -90,6 +92,7 @@ export function LoginPanel() {
 - 底层原语（如需自定义）：`exchangeWeappCode({ code, appId, appSecret })`（`@hxym18/auth/node`）→ `{ ok:true, openid, unionid|null, sessionKey }`。
 - `resolveIdentity` 的 `ctx.unionid` 带上微信 unionid（小程序绑定同一微信开放平台时有值）——用 `ctx.unionid ?? openid` 归一 H5 与小程序身份。（**核心已就绪**；端到端需门面 sso-bridge 回传 unionid，见 [`account-unification.md`](../../knowledge/integration/account-unification.md)）
 - env：`WEAPP_APPID` / `WEAPP_SECRET`（未配 → 404）。
+- **昵称/头像**：微信**不允许自动获取**（2022 起）。统一做法：客户端 `createWeappProfile({ upload })`（`button open-type="chooseAvatar"` + `<input type="nickname">`，站点自绘 UI）+ 服务端 `loadProfile(uid)` 读回；回退 `profileFallback()`（昵称空→「微信用户」）。已有 H5 资料的用户，weapp 端 `loadProfile` 直接继承。
 
 ## Taro（H5 与 Next 对等；小程序登录走共享核心，UI/动线自备）
 

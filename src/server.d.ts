@@ -53,6 +53,13 @@ export type AuthRoutesConfig = {
   anchorEnv?: string | null
   /** openid → 本站 uid；anchor=allowlist 且省略时 uid 即 openid */
   resolveIdentity?: ResolveIdentity
+  /** 登录后按 uid 读回本站资料（昵称/头像）——weapp 端借此继承 H5 资料 */
+  loadProfile?: (
+    uid: string,
+  ) =>
+    | Promise<{ displayName?: string | null; avatar?: string | null } | null>
+    | { displayName?: string | null; avatar?: string | null }
+    | null
   /** 登录成功时回给前端的 user 形状（缺省 { id, displayName, avatar }） */
   userPayload?: (id: string, displayName?: string | null, avatar?: string | null) => unknown
   /**
@@ -87,3 +94,12 @@ export type AuthRoutes = {
  * @throws {TypeError} session.secret 未传 / anchor 非法 / anchor=allowlist 缺 anchorEnv
  */
 export declare function createAuthServer(config: AuthRoutesConfig): AuthRoutes
+
+/**
+ * 从请求读会话（cookie 或 `Authorization: Bearer`）→ `{ uid, iat }`；无效/缺失 → null。
+ * 与 `createAuthServer` 的 `session.deliver`（cookie/token/both）配对，站点中间件用。
+ */
+export declare function getSession(
+  req: Request,
+  opts: { secret?: string; cookieName?: string }
+): { uid: string; iat: number } | null

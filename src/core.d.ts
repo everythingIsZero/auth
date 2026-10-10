@@ -52,3 +52,12 @@ export declare function buildAuthRedirect(
   redirectUrl?: unknown,
   opts?: { origin?: string; fallback?: string }
 ): string
+
+/** 昵称缺省回退（'微信用户'） */
+export declare const DEFAULT_DISPLAY_NAME: '微信用户'
+
+/** 资料回退：昵称空 → '微信用户'；头像空 → '' */
+export declare function profileFallback(profile?: {
+  nickname?: string | null
+  avatar?: string | null
+}): { nickname: string; avatar: string }

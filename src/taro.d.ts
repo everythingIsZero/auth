@@ -28,3 +28,13 @@ export declare function createWeappLogin(opts: {
   /** 可选：落 token（如 Taro.setStorageSync） */
   store?: { set: (token: string) => void }
 }): () => Promise<boolean>
+
+/**
+ * 小程序资料采集接线：临时头像文件 → 上传 → 归一资料（昵称空回退「微信用户」）。
+ * UI（`button open-type="chooseAvatar"` + `<input type="nickname">`）由站点自绘。
+ */
+export declare function createWeappProfile(opts: {
+  upload: (filePath: string) => Promise<string>
+}): {
+  save(input: { avatarFilePath?: string; nickname?: string }): Promise<{ nickname: string; avatar: string }>
+}
