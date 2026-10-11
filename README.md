@@ -29,7 +29,7 @@
 ## 安装
 
 ```bash
-pnpm add github:everythingIsZero/auth#v0.7.0
+pnpm add github:everythingIsZero/auth#v0.8.0
 ```
 
 **能力位依赖**：控制器的 `caps` 由 [`@hxym18/env`](../env) 计算、经 `@hxym18/auth/core` 的
@@ -82,6 +82,18 @@ export function LoginPanel() {
 - **Next**：`createAuthRoutes(config)`（`@hxym18/auth/next`，出口签名与旧版兼容）。
 - **Hono**：`createHonoAuthRoutes(config)`（`@hxym18/auth/hono`）→ `app.all('/api/auth/:action', (c) => auth.dispatch(c))`。
 - **任意 Web 标准框架**：`createAuthServer(config)` + 一行 `dispatch`。
+
+**核心端点（单源，站点不得自写）**：`createAuthServer` 经 `dispatch` 单源提供 `/api/auth/<action>`；`hxym18 check` 命中站点自写这些 core 端点即红（§S5）。
+
+| action | method | 说明 |
+|---|---|---|
+| `config` | GET | 能力探测（`wxEnabled` / `devLogin`） |
+| `dev-login` | POST | 开发旁路（三重 fail-closed 门，未开 404） |
+| `sso-verify` | POST | 微信内静默登录（票根 → openid → 会话） |
+| `wx-qrcode` | GET | PC 扫码取码 |
+| `wx-poll` | GET | PC 扫码轮询 |
+| `weapp` | POST | 小程序换码登录（token） |
+| `logout` | POST | 登出 |
 
 站点唯一业务回调 = `resolveIdentity(openid, ctx)`（openid → 本站 user）。**非 `allowlist` 锚定必填**（缺则装配抛 `TypeError`，消息含 `resolveIdentity`）；`allowlist` 站可省略——uid 即白名单 openid。`resolveIdentity` 返回的 `uid` 须匹配 `/^[A-Za-z0-9_-]{8,64}$/`（字母数字 + `-`/`_`，8..64）：**openid 不作公开 id（除 allowlist）**，站点须映射为本站 uid，不得直接回传微信 openid。`session.secret` **不传** = 装配错误（抛 `TypeError`）；**取值为空** = 运行期缺配，fail-closed 返 503。
 
