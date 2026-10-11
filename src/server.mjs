@@ -109,7 +109,8 @@ function introspectFailure(kind) {
  *   session: { secret: string | (() => string), ttlSec?: number, cookieName?: string },
  *   anchor?: 'identity'|'allowlist'|'first-login',
  *   anchorEnv?: string | null,
- *   resolveIdentity?: (openid: string, ctx: { source: 'sso'|'qr'|'weapp', nickname?: string|null, avatar?: string|null, unionid?: string|null }) => Promise<{ uid: string, displayName?: string|null, avatar?: string|null }|null> | { uid: string, displayName?: string|null, avatar?: string|null } | null,
+ *   resolveIdentity?: (openid: string, ctx: { source: 'sso'|'qr'|'weapp', nickname?: string|null, avatar?: string|null, unionid?: string|null }) => Promise<{ uid: string, isNew?: boolean, displayName?: string|null, avatar?: string|null }|null> | { uid: string, isNew?: boolean, displayName?: string|null, avatar?: string|null } | null,
+ *   onFirstLogin?: (ctx: { uid: string, source: 'sso'|'qr'|'weapp', openid: string, unionid: string|null }) => Promise<void>|void,
  *   loadProfile?: (uid: string) => Promise<{ displayName?: string|null, avatar?: string|null }|null> | { displayName?: string|null, avatar?: string|null } | null,
  *   userPayload?: (id: string, displayName?: string|null, avatar?: string|null) => unknown,
  *   env?: Record<string, string | undefined> | ((key: string) => string | undefined)
@@ -124,6 +125,11 @@ export function createAuthServer(config) {
   const anchorEnv = cfg.anchorEnv || null
   if (anchor === 'allowlist' && !anchorEnv) {
     throw new TypeError('createAuthServer: anchor=allowlist 必须声明 anchorEnv（白名单 env 键名）')
+  }
+  /** 首登钩子：`resolveIdentity` 标记 `isNew:true` 时调用一次（核心无状态，不存首登记录）。 */
+  const onFirstLogin = typeof cfg.onFirstLogin === 'function' ? cfg.onFirstLogin : null
+  if (anchor === 'first-login' && !onFirstLogin) {
+    throw new TypeError('createAuthServer: anchor=first-login 必须提供 onFirstLogin 钩子')
   }
   const cookieName = session.cookieName || APP_SESSION_COOKIE
   const ttlSec = session.ttlSec || SESSION_TTL_SEC
@@ -184,10 +190,16 @@ export function createAuthServer(config) {
         unionid: (profile && profile.unionid) || null,
       })
       if (!ident || !ident.uid) return null
-      return { uid: String(ident.uid), displayName: ident.displayName ?? null, avatar: ident.avatar ?? null }
+      return {
+        uid: String(ident.uid),
+        displayName: ident.displayName ?? null,
+        avatar: ident.avatar ?? null,
+        // 新用户标记（可选）：站点 resolveIdentity 判定「首次登录」时置 true，核心据此触发 onFirstLogin。
+        isNew: ident.isNew === true,
+      }
     }
     // 无 resolveIdentity：uid 即 openid（admin 现状——白名单已在上一步把住）
-    return { uid: openid, displayName: null, avatar: null }
+    return { uid: openid, displayName: null, avatar: null, isNew: false }
   }
 
   /**
@@ -228,7 +240,16 @@ export function createAuthServer(config) {
   async function resolveAndIssue(openid, source, profile) {
     const ident = await admit(openid, source, profile)
     if (!ident) return { ok: false, status: 403, body: deniedBody() }
-    return signForUid(ident.uid, ident.displayName, ident.avatar)
+    const r = await signForUid(ident.uid, ident.displayName, ident.avatar)
+    // first-login：站点标记新用户 → 登录成功后调一次 onFirstLogin（异常降级，不阻塞登录）。
+    if (r.ok && ident.isNew && onFirstLogin) {
+      try {
+        await onFirstLogin({ uid: r.uid, source, openid, unionid: (profile && profile.unionid) || null })
+      } catch {
+        /* 降级：首登后处理失败不阻塞登录 */
+      }
+    }
+    return r
   }
 
   /** 按 `deliver`（cookie / token / both）投递已签会话；`extra` 并入响应体。 */

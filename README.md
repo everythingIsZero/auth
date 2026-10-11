@@ -112,6 +112,26 @@ export function LoginPanel() {
 
 **资料读回 `loadProfile(uid)`**（可选）：登录后按 uid 读本站已存资料（昵称/头像）——`resolveIdentity` 未给的字段用它补齐，weapp 端借此**继承 H5 昵称/头像**。故障降级，不阻塞登录。
 
+**首登钩子 `onFirstLogin(ctx)`**（可选）：`resolveIdentity` 返回 `isNew:true` 且登录成功时**调用一次**（`ctx = { uid, source, openid, unionid }`）——站点据此做建号后处理 / 发欢迎 / 授默认权限。
+
+```js
+createAuthServer({
+  session, // 同上
+  anchor: 'first-login', // 用 first-login 锚定器时 onFirstLogin 必填
+  resolveIdentity: async (openid) => {
+    const { user, created } = await upsertByOpenid(openid)
+    return { uid: user.id, isNew: created } // created=本次新建 → 触发首登钩子
+  },
+  onFirstLogin: async ({ uid }) => {
+    await sendWelcome(uid) // 抛错会被降级，不阻塞登录
+  },
+})
+```
+
+- **核心无状态**：「是否首次」全由站点 `resolveIdentity` 的 `isNew` 判定；核心**不存首登记录、不比对本地库**。
+- **异常降级**：`onFirstLogin` 抛错**不阻塞登录**（登录照常签发会话）。
+- `anchor:'first-login'` 要求提供 `onFirstLogin`，**缺则装配抛 `TypeError`**；其锚定语义同 `identity`（先到先得）。
+
 ### 微信小程序（weapp）
 
 核心**已内置** `POST /api/auth/weapp`（`weappVerify`）：`Taro.login` code → `jscode2session` → **同一个 `resolveIdentity`** → 签 token（weapp 无 cookie）。站点**无需自写锚定/换码**。

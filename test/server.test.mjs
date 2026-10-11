@@ -268,3 +268,69 @@ test('dispatch：尾斜杠不 404；多段按固定前缀剥离取 action', asyn
   // /api/auth/foo/bar 的 action 应为 'foo'（剥 /api/auth/ 后首段），不得错配为 'bar'
   assert.equal((await s.dispatch(new Request('http://x/api/auth/foo/bar'))).status, 404)
 })
+
+/* ---------------- Task A3：first-login 钩子（onFirstLogin + resolveIdentity.isNew） ---------------- */
+
+test('onFirstLogin：resolveIdentity.isNew 为真时调用一次（且带上 uid/source/openid）', async () => {
+  stubFetch(() => jsonResponse({ ok: true, openid: 'o-first' }))
+  let calls = 0
+  let seen = null
+  const s = createAuthServer({
+    ...base,
+    anchor: 'first-login',
+    authServer: { url: 'http://x', secret: 'k' },
+    resolveIdentity: () => ({ uid: 'u_12345678', isNew: true }),
+    onFirstLogin: (ctx) => {
+      calls++
+      seen = ctx
+    },
+  })
+  const r = await s.dispatch(
+    new Request('http://x/api/auth/sso-verify', {
+      method: 'POST',
+      body: JSON.stringify({ ticket: 'a'.repeat(48) }),
+      headers: { 'content-type': 'application/json' },
+    }),
+  )
+  assert.equal(r.status, 200)
+  assert.equal(calls, 1)
+  assert.deepEqual(seen, { uid: 'u_12345678', source: 'sso', openid: 'o-first', unionid: null })
+})
+
+test('onFirstLogin：isNew 非真 → 不调用（老用户登录）', async () => {
+  stubFetch(() => jsonResponse({ ok: true, openid: 'o-old' }))
+  let calls = 0
+  const s = createAuthServer({
+    ...base,
+    authServer: { url: 'http://x', secret: 'k' },
+    resolveIdentity: () => ({ uid: 'u_12345678' }),
+    onFirstLogin: () => {
+      calls++
+    },
+  })
+  const r = await s.ssoVerify(new Request('http://x/', { method: 'POST', body: JSON.stringify({ ticket: TICKET }) }))
+  assert.equal(r.status, 200)
+  assert.equal(calls, 0)
+})
+
+test('onFirstLogin：钩子抛错 → 降级，不阻塞登录', async () => {
+  stubFetch(() => jsonResponse({ ok: true, openid: 'o-first' }))
+  const s = createAuthServer({
+    ...base,
+    authServer: { url: 'http://x', secret: 'k' },
+    resolveIdentity: () => ({ uid: 'u_12345678', isNew: true }),
+    onFirstLogin: () => {
+      throw new Error('welcome mail failed')
+    },
+  })
+  const r = await s.ssoVerify(new Request('http://x/', { method: 'POST', body: JSON.stringify({ ticket: TICKET }) }))
+  assert.equal(r.status, 200)
+  assert.match(r.headers.get('set-cookie'), /^app_session=/)
+})
+
+test('anchor=first-login 缺 onFirstLogin → 装配抛 TypeError', () => {
+  assert.throws(
+    () => createAuthServer({ ...base, anchor: 'first-login', resolveIdentity: () => ({ uid: 'u_12345678' }) }),
+    /onFirstLogin/,
+  )
+})

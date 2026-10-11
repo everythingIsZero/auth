@@ -21,8 +21,14 @@ export type ResolveIdentity = (
     unionid: string | null
   },
 ) =>
-  | Promise<{ uid: string; displayName?: string | null; avatar?: string | null } | null>
-  | { uid: string; displayName?: string | null; avatar?: string | null }
+  | Promise<{
+      uid: string
+      /** 新用户标记（可选）：站点判定「首次登录」时置 true，核心据此触发 `onFirstLogin`。核心无状态，不存首登记录。 */
+      isNew?: boolean
+      displayName?: string | null
+      avatar?: string | null
+    } | null>
+  | { uid: string; isNew?: boolean; displayName?: string | null; avatar?: string | null }
   | null
 
 export type AuthRoutesConfig = {
@@ -53,6 +59,18 @@ export type AuthRoutesConfig = {
   anchorEnv?: string | null
   /** openid → 本站 uid；anchor=allowlist 且省略时 uid 即 openid */
   resolveIdentity?: ResolveIdentity
+  /**
+   * 首登钩子：`resolveIdentity` 返回 `isNew:true` 且登录成功时**调用一次**（`{ uid, source, openid, unionid }`）。
+   * 站点据此做建号后处理 / 发欢迎 / 授默认权限。**核心无状态、不存首登记录、不比对本地库**——
+   * 「是否首次」全由 `resolveIdentity` 的 `isNew` 判定。钩子异常**降级，不阻塞登录**。
+   * `anchor:'first-login'` 时**必填**（缺则装配抛 `TypeError`）。
+   */
+  onFirstLogin?: (ctx: {
+    uid: string
+    source: 'sso' | 'qr' | 'weapp'
+    openid: string
+    unionid: string | null
+  }) => Promise<void> | void
   /** 登录后按 uid 读回本站资料（昵称/头像）——weapp 端借此继承 H5 资料 */
   loadProfile?: (
     uid: string,
@@ -103,7 +121,7 @@ export type AuthRoutes = {
 
 /**
  * 装配 auth 服务端核心（框架无关：处理器吃 Web `Request`、返 Web `Response`）。
- * @throws {TypeError} session.secret 未传 / anchor 非法 / anchor=allowlist 缺 anchorEnv
+ * @throws {TypeError} session.secret 未传 / anchor 非法 / anchor=allowlist 缺 anchorEnv / anchor=first-login 缺 onFirstLogin
  */
 export declare function createAuthServer(config: AuthRoutesConfig): AuthRoutes
 
