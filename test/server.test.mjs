@@ -220,6 +220,12 @@ test('dev-login：非 production + flag + allowlist 三者齐才 200，否则 40
   assert.equal((await prod.devLogin(new Request('http://x/api/auth/dev-login', { method: 'POST' }))).status, 404)
 })
 
+test('dev-login：NODE_ENV 缺失 → 门① fail-closed，即便 flag+allowlist 齐也 404', async () => {
+  const s = createAuthServer({ ...base, env: { AUTH_DEV_LOGIN: '1', AUTH_DEV_UID: 'u_12345678' } })
+  assert.equal((await s.devLogin(new Request('http://x/api/auth/dev-login', { method: 'POST' }))).status, 404)
+  assert.equal((await (await s.config()).json()).devLogin, false)
+})
+
 test('dispatch：尾斜杠不 404；多段按固定前缀剥离取 action', async () => {
   const s = createAuthServer({ ...base, env: {} })
   assert.notEqual((await s.dispatch(new Request('http://x/api/auth/config/'))).status, 404)

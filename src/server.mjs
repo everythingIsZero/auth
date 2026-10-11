@@ -352,7 +352,8 @@ export function createAuthServer(config) {
 
   /**
    * dev-login 三重 fail-closed 门（任一不满足即不启用）：
-   *   ① 非生产：`NODE_ENV !== 'production'`；
+   *   ① 显式非生产：`NODE_ENV` **必须存在（非空）且 ≠ 'production'**——
+   *      缺失/空一律视为关闭（fail-closed；防生产漏设 `NODE_ENV` 时旁路误开）；
    *   ② 显式 flag：`AUTH_DEV_LOGIN` 为真值（缺省/''/'0'/'false' 一律视为关）；
    *   ③ uid 白名单非空：`AUTH_DEV_UID`（逗号分隔）。
    * 返回 `{ open, allow }`；`allow` = 去空白后的白名单 uid 数组。
@@ -364,7 +365,8 @@ export function createAuthServer(config) {
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean)
-    const nonProd = envGet('NODE_ENV') !== 'production'
+    const ne = envGet('NODE_ENV')
+    const nonProd = ne !== '' && ne !== 'production'
     return { open: nonProd && flag && allow.length > 0, allow }
   }
 
