@@ -39,6 +39,7 @@ test('server：env 传函数亦可（运行时取 env）', async () => {
     session: { secret: 's' },
     authServer: { url: 'http://x', secret: 'k' },
     env: (k) => (k === 'NODE_ENV' ? 'production' : ''),
+    resolveIdentity: (openid) => ({ uid: 'user-' + openid }),
   })
   const res = await routes.ssoVerify(new Request('http://x/', { method: 'POST', body: JSON.stringify({ ticket: TICKET }) }))
   assert.equal(res.status, 200)
@@ -50,7 +51,11 @@ test('hono：Context → 核心 Request（ssoVerify 签会话 / wxPoll 取查询
     if (url.includes('introspect')) return jsonResponse({ ok: true, openid: 'openid-1' })
     return jsonResponse({ ok: true, status: 'waiting' })
   })
-  const auth = createHonoAuthRoutes({ session: { secret: 's' }, authServer: { url: 'http://x', secret: 'k' } })
+  const auth = createHonoAuthRoutes({
+    session: { secret: 's' },
+    authServer: { url: 'http://x', secret: 'k' },
+    resolveIdentity: (openid) => ({ uid: 'user-' + openid }),
+  })
 
   const poll = await auth.wxPoll({ req: { raw: new Request('http://x/api/auth/wx-poll?scene=ssologin-' + 'a'.repeat(24)) } })
   assert.equal(poll.status, 200)
@@ -64,7 +69,11 @@ test('hono：Context → 核心 Request（ssoVerify 签会话 / wxPoll 取查询
 })
 
 test('hono：dispatch 通配 + wxConfigured + 未知路径 404', async () => {
-  const auth = createHonoAuthRoutes({ session: { secret: 's' }, authServer: { url: 'http://x', secret: 'k' } })
+  const auth = createHonoAuthRoutes({
+    session: { secret: 's' },
+    authServer: { url: 'http://x', secret: 'k' },
+    resolveIdentity: (openid) => ({ uid: 'user-' + openid }),
+  })
   assert.equal(auth.wxConfigured(), true)
   const res = await auth.dispatch({ req: { raw: new Request('http://x/api/auth/nope', { method: 'GET' }) } })
   assert.equal(res.status, 404)
@@ -96,7 +105,11 @@ test('server：weappVerify 走共享 resolveIdentity（unionid 贯通）+ 签 to
 })
 
 test('server：weapp 未配置 → 404（通道未启用，非登录失败）', async () => {
-  const routes = createAuthServer({ session: { secret: 's' }, env: {} })
+  const routes = createAuthServer({
+    session: { secret: 's' },
+    env: {},
+    resolveIdentity: (openid) => ({ uid: 'user-' + openid }),
+  })
   const res = await routes.weappVerify(
     new Request('http://x/api/auth/weapp', { method: 'POST', body: JSON.stringify({ code: 'c' }) }),
   )
@@ -104,7 +117,11 @@ test('server：weapp 未配置 → 404（通道未启用，非登录失败）', 
 })
 
 test('server：dispatch 覆盖 weapp 动作', async () => {
-  const routes = createAuthServer({ session: { secret: 's' }, env: {} })
+  const routes = createAuthServer({
+    session: { secret: 's' },
+    env: {},
+    resolveIdentity: (openid) => ({ uid: 'user-' + openid }),
+  })
   const res = await routes.dispatch(new Request('http://x/api/auth/weapp', { method: 'POST', body: '{}' }))
   assert.equal(res.status, 404)
 })
@@ -133,6 +150,7 @@ test('server：session.deliver=token → 响应带 token、不设 cookie（Beare
   const routes = createAuthServer({
     session: { secret: 's', deliver: 'token' },
     authServer: { url: 'http://x', secret: 'k' },
+    resolveIdentity: (openid) => ({ uid: 'user-' + openid }),
   })
   const res = await routes.ssoVerify(new Request('http://x/', { method: 'POST', body: JSON.stringify({ ticket: TICKET }) }))
   assert.equal(res.status, 200)
@@ -147,6 +165,7 @@ test('server：session.deliver=both → cookie + token 都给', async () => {
   const routes = createAuthServer({
     session: { secret: 's', deliver: 'both' },
     authServer: { url: 'http://x', secret: 'k' },
+    resolveIdentity: (openid) => ({ uid: 'user-' + openid }),
   })
   const res = await routes.ssoVerify(new Request('http://x/', { method: 'POST', body: JSON.stringify({ ticket: TICKET }) }))
   assert.equal(res.status, 200)
@@ -238,7 +257,11 @@ test('server：loadProfile 故障 → 降级，不阻塞登录', async () => {
 
 /* ---------------- Task A1：config / dev-login 收进 core + dispatch 前缀解析 ---------------- */
 
-const base = { session: { secret: 's'.repeat(32) } }
+const base = {
+  session: { secret: 's'.repeat(32) },
+  // Task A4：非 allowlist 锚定必须提供 resolveIdentity（此处给桩，保持旧用例语义）。
+  resolveIdentity: (openid) => ({ uid: 'user-' + openid }),
+}
 
 test('dispatch: config 返回 wxEnabled/devLogin', async () => {
   const s = createAuthServer({ ...base, env: { AUTH_INTERNAL_URL: 'http://x', AUTH_INTERNAL_SECRET: 'k' } })
@@ -333,4 +356,24 @@ test('anchor=first-login 缺 onFirstLogin → 装配抛 TypeError', () => {
     () => createAuthServer({ ...base, anchor: 'first-login', resolveIdentity: () => ({ uid: 'u_12345678' }) }),
     /onFirstLogin/,
   )
+})
+
+/* ---------------- Task A4：uid 约束入契约 + 非 allowlist 必配 resolveIdentity ---------------- */
+
+test('非 allowlist 缺 resolveIdentity → 装配抛 TypeError（消息含 resolveIdentity）', () => {
+  assert.throws(() => createAuthServer({ session: { secret: 's'.repeat(32) } }), /resolveIdentity/)
+})
+
+test('allowlist 站可省 resolveIdentity（uid 即白名单 openid）', async () => {
+  stubFetch(() => jsonResponse({ ok: true, openid: 'owner-openid-0001' }))
+  const s = createAuthServer({
+    session: { secret: 's' },
+    authServer: { url: 'http://x', secret: 'k' },
+    anchor: 'allowlist',
+    anchorEnv: 'TEST_A4_OWNER',
+    env: { TEST_A4_OWNER: 'owner-openid-0001' },
+  })
+  const r = await s.ssoVerify(new Request('http://x/', { method: 'POST', body: JSON.stringify({ ticket: TICKET }) }))
+  assert.equal(r.status, 200)
+  assert.equal((await r.json()).user.id, 'owner-openid-0001')
 })

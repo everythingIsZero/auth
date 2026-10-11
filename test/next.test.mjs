@@ -26,11 +26,17 @@ function jsonResponse(obj, status = 200) {
 function baseConfig(extra) {
   process.env.AUTH_INTERNAL_URL = 'http://auth-server:3000'
   process.env.AUTH_INTERNAL_SECRET = 'secret-x'
-  return {
+  const cfg = {
     session: { secret: 'session-secret' },
     authServer: { url: 'http://auth-server:3000', secret: 'secret-x' },
     ...extra,
   }
+  // Task A4：非 allowlist 锚定必须提供 resolveIdentity；缺省给桩，保持旧用例语义。
+  // （allowlist 站可省，故不注入——否则会改掉「uid 即 openid」的断言。）
+  if ((cfg.anchor || 'identity') !== 'allowlist' && !cfg.resolveIdentity) {
+    cfg.resolveIdentity = (openid) => ({ uid: 'user-' + openid })
+  }
+  return cfg
 }
 
 test('锚定器枚举与声明口径一致', () => {
@@ -164,7 +170,11 @@ test('wxPoll：scene 形态不符 → 400；ok 缺 openid → 502；ok 正常 �
 })
 
 test('wxQrcode：门面未配置 → 503；正常 → 透传 scene/qrUrl', async () => {
-  const noConf = createAuthRoutes({ session: { secret: 's' }, authServer: { url: '', secret: '' } })
+  const noConf = createAuthRoutes({
+    session: { secret: 's' },
+    authServer: { url: '', secret: '' },
+    resolveIdentity: (openid) => ({ uid: 'user-' + openid }),
+  })
   assert.equal((await noConf.wxQrcode(new Request('http://x/'))).status, 503)
 
   stubFetch(() => jsonResponse({ ok: true, scene: 'ssologin-' + 'b'.repeat(24), qrUrl: 'https://q', expiresIn: 300 }))
@@ -288,7 +298,8 @@ test('ssoVerify：门面 profile 端点故障 → 静默降级照常签发会话
 })
 
 test('wxConfigured：门面未配置 false / 已配置 true（登录页能力探测）', () => {
-  assert.equal(createAuthRoutes({ session: { secret: 's' }, authServer: { url: '', secret: '' } }).wxConfigured(), false)
+  const noConf = { session: { secret: 's' }, authServer: { url: '', secret: '' }, resolveIdentity: (openid) => ({ uid: 'user-' + openid }) }
+  assert.equal(createAuthRoutes(noConf).wxConfigured(), false)
   assert.equal(createAuthRoutes(baseConfig({})).wxConfigured(), true)
 })
 

@@ -69,6 +69,13 @@ export type { RenewIfStaleOptions } from './core'
  */
 export declare const SESSION_VERSION: 'v1'
 
+/**
+ * uid 白字：字母数字 + `-`/`_`，8..64（`/^[A-Za-z0-9_-]{8,64}$/`）——
+ * 与 hmd `session.ts` 验签同口径。**uid 契约单源**：`resolveIdentity` 返回的 uid、`issueSession` 入参
+ * 均须匹配此形态；openid 不作公开 id（除 `allowlist`），站点须映射为本站 uid。
+ */
+export declare const SESSION_UID_RE: RegExp
+
 export interface IssueSessionOptions {
   /** 签名密钥（内部 sha256 派生为 HMAC key）；必填 */
   secret: string

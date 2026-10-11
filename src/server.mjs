@@ -110,6 +110,7 @@ function introspectFailure(kind) {
  *   anchor?: 'identity'|'allowlist'|'first-login',
  *   anchorEnv?: string | null,
  *   resolveIdentity?: (openid: string, ctx: { source: 'sso'|'qr'|'weapp', nickname?: string|null, avatar?: string|null, unionid?: string|null }) => Promise<{ uid: string, isNew?: boolean, displayName?: string|null, avatar?: string|null }|null> | { uid: string, isNew?: boolean, displayName?: string|null, avatar?: string|null } | null,
+ *        **非 allowlist 锚定必填**（缺则装配抛 TypeError）；返回的 `uid` 须匹配 `^[A-Za-z0-9_-]{8,64}$`（openid 不作公开 id）。
  *   onFirstLogin?: (ctx: { uid: string, source: 'sso'|'qr'|'weapp', openid: string, unionid: string|null }) => Promise<void>|void,
  *   loadProfile?: (uid: string) => Promise<{ displayName?: string|null, avatar?: string|null }|null> | { displayName?: string|null, avatar?: string|null } | null,
  *   userPayload?: (id: string, displayName?: string|null, avatar?: string|null) => unknown,
@@ -161,6 +162,15 @@ export function createAuthServer(config) {
   // 门面/小程序配置**按请求**解析（不装配期冻结），与 session.secret 口径一致。
   const confOf = () => authServerConf(cfg.authServer, envGet)
   const resolveIdentity = cfg.resolveIdentity || null
+  /**
+   * 非 allowlist 锚定必须提供 `resolveIdentity`：否则 uid 会退化为 openid，
+   * 违反「openid 不作公开 id（除 allowlist）」（S6）。allowlist 站可省——uid 即白名单 openid。
+   */
+  if (anchor !== 'allowlist' && !resolveIdentity) {
+    throw new TypeError(
+      'createAuthServer: 非 allowlist 锚定必须提供 resolveIdentity（openid → 本站 uid；uid 须匹配 ^[A-Za-z0-9_-]{8,64}$）',
+    )
+  }
   /** 可选：登录后按 uid 读回本站资料（昵称/头像）——weapp 端借此继承 H5 资料，站点无需再写读回。 */
   const loadProfile = cfg.loadProfile || null
   const userPayload = cfg.userPayload || ((id, displayName, avatar) => ({ id, displayName: displayName || null, avatar: avatar || null }))
@@ -198,7 +208,8 @@ export function createAuthServer(config) {
         isNew: ident.isNew === true,
       }
     }
-    // 无 resolveIdentity：uid 即 openid（admin 现状——白名单已在上一步把住）
+    // 无 resolveIdentity：仅 allowlist 站可到此（装配已强制非 allowlist 必配 resolveIdentity），
+    // uid 即白名单 openid（openid 作公开 id 仅在 allowlist 场景允许）。
     return { uid: openid, displayName: null, avatar: null, isNew: false }
   }
 

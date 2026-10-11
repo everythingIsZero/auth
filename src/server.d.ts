@@ -5,7 +5,12 @@
 /** 锚定器枚举（identity=身份锚 / allowlist=白名单 / first-login=首登） */
 export declare const ANCHORS: readonly string[]
 
-/** 身份锚定回调：openid → 本站 uid（各站「怎么用这个人」的唯一入口） */
+/**
+ * 身份锚定回调：openid → 本站 uid（各站「怎么用这个人」的唯一入口）。
+ * **非 `allowlist` 锚定必填**（缺则装配抛 `TypeError`）；返回的 `uid` 须匹配
+ * `/^[A-Za-z0-9_-]{8,64}$/`（字母数字 + `-`/`_`，8..64）——`openid` 不作公开 id（除 `allowlist`），
+ * 故站点须映射为本站 uid，不得直接回传微信 openid。
+ */
 export type ResolveIdentity = (
   openid: string,
   ctx: {
@@ -57,7 +62,10 @@ export type AuthRoutesConfig = {
   anchor?: 'identity' | 'allowlist' | 'first-login'
   /** anchor=allowlist 时必填：白名单 openid 所在 env 键名 */
   anchorEnv?: string | null
-  /** openid → 本站 uid；anchor=allowlist 且省略时 uid 即 openid */
+  /**
+   * openid → 本站 uid；返回 uid 须匹配 `/^[A-Za-z0-9_-]{8,64}$/`。
+   * **非 `allowlist` 锚定必填**（缺则装配抛 `TypeError`）；`allowlist` 站可省略——uid 即白名单 openid。
+   */
   resolveIdentity?: ResolveIdentity
   /**
    * 首登钩子：`resolveIdentity` 返回 `isNew:true` 且登录成功时**调用一次**（`{ uid, source, openid, unionid }`）。
@@ -121,7 +129,7 @@ export type AuthRoutes = {
 
 /**
  * 装配 auth 服务端核心（框架无关：处理器吃 Web `Request`、返 Web `Response`）。
- * @throws {TypeError} session.secret 未传 / anchor 非法 / anchor=allowlist 缺 anchorEnv / anchor=first-login 缺 onFirstLogin
+ * @throws {TypeError} session.secret 未传 / anchor 非法 / anchor=allowlist 缺 anchorEnv / anchor=first-login 缺 onFirstLogin / 非 allowlist 缺 resolveIdentity
  */
 export declare function createAuthServer(config: AuthRoutesConfig): AuthRoutes
 

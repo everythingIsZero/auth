@@ -83,7 +83,7 @@ export function LoginPanel() {
 - **Hono**：`createHonoAuthRoutes(config)`（`@hxym18/auth/hono`）→ `app.all('/api/auth/:action', (c) => auth.dispatch(c))`。
 - **任意 Web 标准框架**：`createAuthServer(config)` + 一行 `dispatch`。
 
-站点唯一业务回调 = `resolveIdentity(openid, ctx)`（openid → 本站 user）。`session.secret` **不传** = 装配错误（抛 `TypeError`）；**取值为空** = 运行期缺配，fail-closed 返 503。
+站点唯一业务回调 = `resolveIdentity(openid, ctx)`（openid → 本站 user）。**非 `allowlist` 锚定必填**（缺则装配抛 `TypeError`，消息含 `resolveIdentity`）；`allowlist` 站可省略——uid 即白名单 openid。`resolveIdentity` 返回的 `uid` 须匹配 `/^[A-Za-z0-9_-]{8,64}$/`（字母数字 + `-`/`_`，8..64）：**openid 不作公开 id（除 allowlist）**，站点须映射为本站 uid，不得直接回传微信 openid。`session.secret` **不传** = 装配错误（抛 `TypeError`）；**取值为空** = 运行期缺配，fail-closed 返 503。
 
 **会话投递 `session.deliver`**（缺省 `cookie`）：
 - `cookie`：`Set-Cookie`（Next 站现状）。
