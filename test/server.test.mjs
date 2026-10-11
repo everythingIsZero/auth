@@ -199,3 +199,30 @@ test('server：loadProfile 故障 → 降级，不阻塞登录', async () => {
   assert.equal(res.status, 200)
   assert.equal((await res.json()).user.displayName, '锚定名')
 })
+
+/* ---------------- Task A1：config / dev-login 收进 core + dispatch 前缀解析 ---------------- */
+
+const base = { session: { secret: 's'.repeat(32) } }
+
+test('dispatch: config 返回 wxEnabled/devLogin', async () => {
+  const s = createAuthServer({ ...base, env: { AUTH_INTERNAL_URL: 'http://x', AUTH_INTERNAL_SECRET: 'k' } })
+  const r = await s.dispatch(new Request('http://x/api/auth/config'))
+  const b = await r.json()
+  assert.equal(r.status, 200)
+  assert.equal(b.wxEnabled, true)
+  assert.equal(b.devLogin, false)
+})
+
+test('dev-login：非 production + flag + allowlist 三者齐才 200，否则 404', async () => {
+  const open = createAuthServer({ ...base, env: { NODE_ENV: 'development', AUTH_DEV_LOGIN: '1', AUTH_DEV_UID: 'u_12345678' } })
+  assert.equal((await open.devLogin(new Request('http://x/api/auth/dev-login', { method: 'POST' }))).status, 200)
+  const prod = createAuthServer({ ...base, env: { NODE_ENV: 'production', AUTH_DEV_LOGIN: '1', AUTH_DEV_UID: 'u_12345678' } })
+  assert.equal((await prod.devLogin(new Request('http://x/api/auth/dev-login', { method: 'POST' }))).status, 404)
+})
+
+test('dispatch：尾斜杠不 404；多段按固定前缀剥离取 action', async () => {
+  const s = createAuthServer({ ...base, env: {} })
+  assert.notEqual((await s.dispatch(new Request('http://x/api/auth/config/'))).status, 404)
+  // /api/auth/foo/bar 的 action 应为 'foo'（剥 /api/auth/ 后首段），不得错配为 'bar'
+  assert.equal((await s.dispatch(new Request('http://x/api/auth/foo/bar'))).status, 404)
+})

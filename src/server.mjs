@@ -195,44 +195,43 @@ export function createAuthServer(config) {
    *   - 小程序 weapp → 由调用方作为 JSON `token` 返回（weapp 无 cookie）
    * 返回 `{ ok:true, uid, displayName, avatar, value, maxAgeSec, user }` 或 `{ ok:false, status, body }`。
    */
-  async function resolveAndIssue(openid, source, profile) {
-    const ident = await admit(openid, source, profile)
-    if (!ident) return { ok: false, status: 403, body: deniedBody() }
-    if (typeof ident.uid !== 'string' || !SESSION_UID_RE.test(ident.uid)) {
+  /**
+   * 给**已知 uid** 签会话（不锚定）：校验 uid 形态与密钥 → issueSession → 读回资料。
+   * 锚定流程（`resolveAndIssue`）与 dev-login 共用的尾部。
+   * 返回 `{ ok:true, uid, displayName, avatar, value, maxAgeSec, user }` 或 `{ ok:false, status, body }`。
+   */
+  async function signForUid(uid, displayName, avatar) {
+    if (typeof uid !== 'string' || !SESSION_UID_RE.test(uid)) {
       return { ok: false, status: 500, body: { ok: false, error: '身份锚定异常' } }
     }
     const secret = secretOf()
     if (!secret) return { ok: false, status: 503, body: { ok: false, error: '会话密钥未配置' } }
-    const { value, maxAgeSec } = issueSession(ident.uid, { secret, ttlSec })
-    // 读回本站资料（若配 loadProfile）：resolveIdentity 未给的字段用站点已存资料补齐（weapp 继承 H5）。
-    let displayName = ident.displayName
-    let avatar = ident.avatar
+    const { value, maxAgeSec } = issueSession(uid, { secret, ttlSec })
+    // 读回本站资料（若配 loadProfile）：未给的字段用站点已存资料补齐（weapp 继承 H5）。
+    let dn = displayName ?? null
+    let av = avatar ?? null
     if (loadProfile) {
       try {
-        const p = await loadProfile(ident.uid)
+        const p = await loadProfile(uid)
         if (p) {
-          if (displayName == null && p.displayName != null) displayName = p.displayName
-          if (avatar == null && p.avatar != null) avatar = p.avatar
+          if (dn == null && p.displayName != null) dn = p.displayName
+          if (av == null && p.avatar != null) av = p.avatar
         }
       } catch {
         /* 降级：读资料失败不阻塞登录 */
       }
     }
-    return {
-      ok: true,
-      uid: ident.uid,
-      displayName,
-      avatar,
-      value,
-      maxAgeSec,
-      user: userPayload(ident.uid, displayName, avatar),
-    }
+    return { ok: true, uid, displayName: dn, avatar: av, value, maxAgeSec, user: userPayload(uid, dn, av) }
   }
 
-  /** 认人成功后的收尾：锚定 + 签会话 + 按 `deliver` 投递（cookie / token / both）。 */
-  async function issue(openid, source, extra, profile) {
-    const r = await resolveAndIssue(openid, source, profile)
-    if (!r.ok) return json(r.body, r.status)
+  async function resolveAndIssue(openid, source, profile) {
+    const ident = await admit(openid, source, profile)
+    if (!ident) return { ok: false, status: 403, body: deniedBody() }
+    return signForUid(ident.uid, ident.displayName, ident.avatar)
+  }
+
+  /** 按 `deliver`（cookie / token / both）投递已签会话；`extra` 并入响应体。 */
+  function deliverSession(r, extra) {
     const body = { ok: true, ...(extra || {}), user: r.user }
     if (deliver !== 'cookie') body.token = r.value
     const res = json(body)
@@ -241,6 +240,13 @@ export function createAuthServer(config) {
       res.headers.append('set-cookie', sessionCookieHeader(cookieName, r.value, r.maxAgeSec, secure))
     }
     return res
+  }
+
+  /** 认人成功后的收尾：锚定 + 签会话 + 按 `deliver` 投递（cookie / token / both）。 */
+  async function issue(openid, source, extra, profile) {
+    const r = await resolveAndIssue(openid, source, profile)
+    if (!r.ok) return json(r.body, r.status)
+    return deliverSession(r, extra)
   }
 
   /* ---------------- 微信内静默登录（SSO 验票）---------------- */
@@ -336,21 +342,79 @@ export function createAuthServer(config) {
     return res
   }
 
+  /* ---------------- 能力探测 / 开发旁路（config + dev-login）---------------- */
+
+  /** PC 扫码通道是否已配置（登录页「能力探测」用） */
+  function wxConfigured() {
+    const conf = confOf()
+    return Boolean(conf.url && conf.secret)
+  }
+
+  /**
+   * dev-login 三重 fail-closed 门（任一不满足即不启用）：
+   *   ① 非生产：`NODE_ENV !== 'production'`；
+   *   ② 显式 flag：`AUTH_DEV_LOGIN` 为真值（缺省/''/'0'/'false' 一律视为关）；
+   *   ③ uid 白名单非空：`AUTH_DEV_UID`（逗号分隔）。
+   * 返回 `{ open, allow }`；`allow` = 去空白后的白名单 uid 数组。
+   */
+  function devGate() {
+    const rawFlag = String(envGet('AUTH_DEV_LOGIN')).trim().toLowerCase()
+    const flag = rawFlag !== '' && rawFlag !== '0' && rawFlag !== 'false'
+    const allow = String(envGet('AUTH_DEV_UID'))
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+    const nonProd = envGet('NODE_ENV') !== 'production'
+    return { open: nonProd && flag && allow.length > 0, allow }
+  }
+
+  /** GET /api/auth/config：登录页能力探测——wxEnabled=扫码通道配好否；devLogin=三重门是否开启。 */
+  function handleConfig() {
+    return json({ ok: true, wxEnabled: wxConfigured(), devLogin: devGate().open })
+  }
+
+  /**
+   * POST /api/auth/dev-login：开发旁路登录（仅三重门全开时）。
+   * 直接给**白名单内的 uid** 签会话——不经过 `resolveIdentity`：dev uid 不是 openid，
+   * 站点锚定无从映射（若走锚定，配了 resolveIdentity 的站会 403，旁路失效）。
+   * 门未开 → 404（对未启用者不暴露端点存在）。请求体可选 `{ uid }` 指定白名单内某个 uid；
+   * 省略且白名单恰一个时用该 uid，否则 404。
+   */
+  async function handleDevLogin(req) {
+    const { open, allow } = devGate()
+    if (!open) return json({ ok: false, error: 'not_found' }, 404)
+    const body = await req.json().catch(() => null)
+    const requested = body && typeof body.uid === 'string' && body.uid.trim() ? body.uid.trim() : ''
+    const uid = requested || (allow.length === 1 ? allow[0] : '')
+    if (!uid || !allow.includes(uid)) return json({ ok: false, error: 'not_found' }, 404)
+    const r = await signForUid(uid, null, null)
+    if (!r.ok) return json(r.body, r.status)
+    return deliverSession(r, undefined)
+  }
+
   return {
     ssoVerify: handleSsoVerify,
     wxQrcode: handleWxQrcode,
     wxPoll: handleWxPoll,
     weappVerify: handleWeappVerify,
     logout: handleLogout,
+    /** GET /api/auth/config：能力探测（`{ ok:true, wxEnabled, devLogin }`） */
+    config: handleConfig,
+    /** POST /api/auth/dev-login：开发旁路登录（三重门全开才 200，否则 404） */
+    devLogin: handleDevLogin,
     /** PC 扫码通道是否已配置（登录页「能力探测」用：/api/auth/config 报给前端） */
-    wxConfigured: () => {
-      const conf = confOf()
-      return Boolean(conf.url && conf.secret)
-    },
-    /** 通配分发（单文件建全部端点）：`/api/auth/<action>` */
+    wxConfigured,
+    /**
+     * 通配分发（单文件建全部端点）：`/api/auth/<action>`。
+     * action 按**固定前缀 `/api/auth/` 剥离后取首段**（不用 `split('/').pop()`）——
+     * 兼容尾斜杠（`/api/auth/config/`）与多段路径（`/api/auth/foo/bar` → action='foo'）。
+     */
     async dispatch(req) {
-      const action = new URL(req.url).pathname.split('/').pop() || ''
+      const p = new URL(req.url).pathname.replace(/\/$/, '')
+      const action = p.startsWith('/api/auth/') ? p.slice('/api/auth/'.length).split('/')[0] : ''
       const method = req.method.toUpperCase()
+      if (action === 'config' && method === 'GET') return handleConfig()
+      if (action === 'dev-login' && method === 'POST') return handleDevLogin(req)
       if (action === 'sso-verify' && method === 'POST') return handleSsoVerify(req)
       if (action === 'wx-qrcode' && method === 'GET') return handleWxQrcode()
       if (action === 'wx-poll' && method === 'GET') return handleWxPoll(req)

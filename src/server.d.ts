@@ -83,9 +83,21 @@ export type AuthRoutes = {
   weappVerify: (req: Request) => Promise<Response>
   /** POST /api/auth/logout：清会话 cookie */
   logout: (req?: Request) => Promise<Response>
+  /** GET /api/auth/config：能力探测 → `{ ok:true, wxEnabled, devLogin }`（devLogin=三重门是否开启） */
+  config: () => Promise<Response>
+  /**
+   * POST /api/auth/dev-login：开发旁路登录。
+   * 三重 fail-closed 门（`NODE_ENV!=='production'` + `AUTH_DEV_LOGIN` 真值 + `AUTH_DEV_UID` 白名单非空）
+   * 全开才签发会话（给白名单内 uid）；否则 404。
+   */
+  devLogin: (req: Request) => Promise<Response>
   /** PC 扫码通道是否已配置（登录页能力探测用） */
   wxConfigured: () => boolean
-  /** 通配分发：一个处理器覆盖 /api/auth/<action>（sso-verify|wx-qrcode|wx-poll|weapp|logout） */
+  /**
+   * 通配分发：一个处理器覆盖 `/api/auth/<action>`
+   * （config|dev-login|sso-verify|wx-qrcode|wx-poll|weapp|logout）。
+   * action 按固定前缀 `/api/auth/` 剥离取首段，兼容尾斜杠/多段。
+   */
   dispatch: (req: Request) => Promise<Response>
 }
 
