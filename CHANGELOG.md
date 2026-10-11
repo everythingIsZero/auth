@@ -4,7 +4,9 @@
 
 ## [Unreleased]
 
-下一 minor（拟 `0.9.0`）——含**行为变更**（会话 cookie `Secure` 口径），破坏本地 http 开发对 `NODE_ENV` 的隐式依赖。
+## [0.9.0] - 2026-10-11
+
+含**行为变更**（会话 cookie `Secure` 口径）：不再依赖 `NODE_ENV` 推断——本地 http 开发须显式 `session.secure: false`。
 
 ### Added
 
@@ -25,6 +27,10 @@
 
 - README 更新「会话 cookie 硬化」为实际行为（`Secure` 默认恒开 + 显式开关 + `renewSession` 的 `env` 同口径）。
 - README 补 S6 文档义务（纯文档，无行为变更）：`session.deliver:'both'` 的 body token 暴露风险与适用/不适用场景；`__Host-` cookie 前缀**评估结论：暂不采用**（`app_session` 已 host-only、兼容，但改名破坏性 + 强制 Secure 打断本地 http 开发）；token 吊销**登记为后续独立事项**（无状态 HMAC 无吊销名单，绝对过期只相对最后签发，续期会重置 `iat` 且无总寿命上限）。
+
+### Chore
+
+- 包内**契约副本**声明（`package.json` 的 `hxym18.contracts`，由 `hxym18 gen contracts` 生成、禁手改）：`sensitive-prefixes@1`、`endpoints@1`、`capability-projection@1`、`facade@1`；包级校验 `hxym18 check <pkg> --contracts <L0>`。
 
 ## [0.8.0] - 2026-10-11
 
