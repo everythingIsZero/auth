@@ -183,6 +183,26 @@ test('server：getSession 透传 ttlSec 做绝对过期判定（缺省 48h）', 
   assert.equal(getSession(new Request('http://x/', { headers: { cookie: `app_session=${value}` } }), { secret: 's' }).uid, 'user-0001')
 })
 
+test('server：getSession 漏传 ttlSec 与签发侧不联动（按缺省 48h）——陷阱固化', () => {
+  const { value, iat } = issueSession('user-0001', { secret: 's', ttlSec: 60 })
+  const realNow = Date.now
+  Date.now = () => (iat + 61) * 1000
+  try {
+    // 读侧同传 60 → 61s 后已过绝对过期 → null
+    assert.equal(
+      getSession(new Request('http://x/', { headers: { cookie: `app_session=${value}` } }), { secret: 's', ttlSec: 60 }),
+      null,
+    )
+    // 读侧漏传 → 按缺省 48h 判，仍视为有效（短 TTL 形同虚设）
+    assert.equal(
+      getSession(new Request('http://x/', { headers: { cookie: `app_session=${value}` } }), { secret: 's' }).uid,
+      'user-0001',
+    )
+  } finally {
+    Date.now = realNow
+  }
+})
+
 test('server：loadProfile 读回资料——weapp 继承已存昵称/头像（resolveIdentity 未给时）', async () => {
   globalThis.fetch = async () => new Response(JSON.stringify({ openid: 'o-weapp' }), { status: 200 })
   const routes = createAuthServer({

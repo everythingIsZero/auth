@@ -94,6 +94,22 @@ export function LoginPanel() {
 
 **会话续期 `renewSession(req, { secret, ttlSec, cookieName })`**（`@hxym18/auth/node`）：读请求会话（cookie 或 `Bearer`），**未过期但已过续期点**（`renewIfStale`）→ 返带 `Set-Cookie` 的 `Response`，否则 `null`。**续期回写仅 Node 运行时可用；Edge middleware 不可续期**（重签依赖 `node:crypto`）——Edge 站把续期落到 Node 端点（Route Handler / Server Action / Node middleware）。纯判定 `renewIfStale(iat, { ttlSec, halfLife })` 在同构层 `@hxym18/auth/core`（零 `node:crypto`，Edge 可载）。
 
+> ⚠️ **`ttlSec` 必须与签发侧一致（读侧联动）**：读侧（`getSession` / `renewSession` / `readSession`）**必须与签发侧 `session.ttlSec` 传同一值**。三者缺省均为 `SESSION_TTL_SEC`（48h）——**仅当签发用自定义 TTL 时才需显式同传**；否则读侧按缺省 48h 判绝对过期，**短 TTL 形同虚设**：`deliver:'token'` 的 Bearer 无浏览器 `Max-Age` 约束，捕获后可被用满 48h。
+>
+> 正确做法：用**同一份配置对象**同时喂 `createAuthServer` 与读侧。
+>
+> ```js
+> import { createAuthServer, getSession } from '@hxym18/auth/server'
+>
+> // 单源：签发与读侧共用同一 ttlSec
+> const session = { secret: process.env.SESSION_SECRET, ttlSec: 3600 } // 1h
+> const routes = createAuthServer({ session, resolveIdentity })
+>
+> // 中间件读侧：同传 session.ttlSec
+> const who = getSession(req, { secret: session.secret, cookieName: session.cookieName, ttlSec: session.ttlSec })
+> ```
+
+
 **资料读回 `loadProfile(uid)`**（可选）：登录后按 uid 读本站已存资料（昵称/头像）——`resolveIdentity` 未给的字段用它补齐，weapp 端借此**继承 H5 昵称/头像**。故障降级，不阻塞登录。
 
 ### 微信小程序（weapp）

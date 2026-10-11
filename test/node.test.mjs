@@ -420,6 +420,29 @@ test('renewSession：支持 Bearer token 输入 + secure 覆写', () => {
   }
 })
 
+test('renewSession：漏传 ttlSec 与签发侧不联动（按缺省 48h）——陷阱固化', () => {
+  const secret = 's'.repeat(32)
+  const { value, iat } = issueSession('u_12345678', { secret, ttlSec: 60 })
+  const realNow = Date.now
+  const req = () => new Request('http://x/', { headers: { authorization: `Bearer ${value}` } })
+  Date.now = () => (iat + 61) * 1000
+  try {
+    // 同传 60 → 已绝对过期，不可续期 → null
+    assert.equal(renewSession(req(), { secret, ttlSec: 60 }), null)
+    // 漏传 → 按缺省 48h，且 61s 未到半衰期(24h) → null
+    assert.equal(renewSession(req(), { secret }), null)
+  } finally {
+    Date.now = realNow
+  }
+  // 漏传 + 超过缺省半衰期(24h) → 仍可续期（短 TTL 形同虚设的可观察证据）
+  Date.now = () => (iat + 24 * 3600 + 1) * 1000
+  try {
+    assert.ok(renewSession(req(), { secret }) instanceof Response)
+  } finally {
+    Date.now = realNow
+  }
+})
+
 test('core 出口：renewIfStale 已移入 core（node 仅再导出同一绑定）', async () => {
   const core = await import('../src/core.mjs')
   assert.equal(typeof core.renewIfStale, 'function')

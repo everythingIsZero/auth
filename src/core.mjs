@@ -2,7 +2,7 @@
  * core.mjs — @app/auth 同构层（零依赖、纯净、可在 Edge / 浏览器 / Node 跑）
  *
  * 收敛票根格式、cookie 名、provider 名、scene 格式、SSO 跳转与 redirect 白名单。
- * 本层不 import 任何 Node 内置模块（crypto / buffer），只用 Web 标准（URL / RegExp），
+ * 本层不 import 任何 Node 内置模块，只用 Web 标准（URL / RegExp），
  * 故 Next.js Edge runtime 可直载。需要 Node 密码学原语（sha1 验签 / HMAC）的
  * 消费方改用同包的 node.mjs（Node-only）。
  *
@@ -59,7 +59,7 @@ export function sessionCookieName(opts) {
 }
 
 /**
- * 判会话是否已过"续期点"（静默续期决策，纯函数、**零 crypto**，故可在 Edge / 浏览器跑）。
+ * 判会话是否已过"续期点"（静默续期决策，纯函数、**零密码学依赖**，故可在 Edge / 浏览器跑）。
  * 判定：age=now-iat；age ≥ 半衰期 → true。半衰期缺省 ttlSec/2（48h → 24h），
  * 上限收敛为 ttlSec（即便传入更大的 halfLife，到期前也必续）。
  * iat 非法（NaN/≤0）→ true（保守起见按需续期）；iat 在未来（时钟偏移）→ false。
