@@ -4,6 +4,27 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-11
+
+### Added
+
+- **core 端点 `config` / `dev-login`（端点单源）**：`GET /api/auth/config`（下发给客户端的非密配置）+ `POST /api/auth/dev-login`（本地开发免微信登录）。`dev-login` 走**三重门**（非生产 `NODE_ENV` + 显式开关 + 密钥），任一不满足即 404。
+- **首登钩子 `onFirstLogin(ctx)`**：`resolveIdentity` 返回 `isNew:true` 且登录成功时调用一次（`ctx = { uid, source, openid, unionid }`）；异常降级，不阻塞登录。配套锚定器 `anchor:'first-login'`（要求提供 `onFirstLogin`，缺则装配抛 `TypeError`）。
+- **`renewSession(req, { secret, ttlSec, cookieName })`（`@hxym18/auth/node`，Node-only）**：读请求会话，未过期但已过续期点（`renewIfStale`）→ 返带 `Set-Cookie` 的 `Response`，否则 `null`。重签依赖 `node:crypto`，**Edge middleware 不可续期**。
+- **门面契约（README）**：记录 auth 消费的门面端点形态（`introspect`/`profile`/`qr/issue`/`qr/poll`）与 `unionid` 现状（pending）；auth 已 **unionid-ready**（门面回则透传、不回则 `null`，登录链路不受影响）。
+
+### Changed（破坏性）
+
+- **非 `allowlist` 锚定必须提供 `resolveIdentity`**：缺则**装配抛 `TypeError`**（消息含 `resolveIdentity`）；`allowlist` 站可省略（uid 即白名单 openid）。`resolveIdentity` 返回的 `uid` 须匹配 `/^[A-Za-z0-9_-]{8,64}$/`（字母数字 + `-`/`_`，8..64）——**openid 不作公开 id（除 allowlist）**，站点须映射为本站 uid，不得直接回传微信 openid。
+- **`getSession` 增 `ttlSec`**：读侧须与签发侧 `session.ttlSec` 传同一值（三者缺省均 `SESSION_TTL_SEC`＝48h）；仅当签发用自定义 TTL 时才需显式同传，否则短 TTL 形同虚设（`deliver:'token'` 的 Bearer 无 `Max-Age` 约束）。
+- **`readSession` 强制绝对过期**：`now > iat + ttlSec` 判过期，`ttlSec` 缺省 48h。
+- **`renewIfStale` 迁至 `@hxym18/auth/core`**：纯判定（零 `node:crypto`），Edge 可载。
+- **`init auth` 不再自写 `config` 路由**：端点单源，改由共享核心提供——见 `@hxym18/cli` v0.5.2。
+
+### Fixed
+
+- `dev-login` **门① 缺失 `NODE_ENV` fail-closed**：未显式声明非生产环境即拒绝，不再默认放行。
+
 ## [0.7.0] - 2026-10-11
 
 ### Changed（破坏性：终端契约语义收敛）
