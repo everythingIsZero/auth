@@ -420,6 +420,39 @@ test('renewSession：支持 Bearer token 输入 + secure 覆写', () => {
   }
 })
 
+test('renewSession(S6)④：secure 决策与签发侧同口径——读注入 env，不读 process.env', () => {
+  const secret = 's'.repeat(32)
+  const { value, iat } = issueSession('u_12345678', { secret, ttlSec: 100 })
+  const realNow = Date.now
+  const realNodeEnv = process.env.NODE_ENV
+  Date.now = () => (iat + 60) * 1000
+  const req = () => new Request('http://x/', { headers: { authorization: `Bearer ${value}` } })
+  const cookie = (opts) => renewSession(req(), { secret, ttlSec: 100, ...opts }).headers.get('set-cookie')
+  try {
+    // 方向 A：真 env 说开发、注入 env 说生产 + 显式 false → 仍 Secure。
+    // 读 process.env 会得「非生产 → 关」；读注入源才得「生产 → 强制开」。故证明读注入源。
+    process.env.NODE_ENV = 'development'
+    assert.match(
+      cookie({ secure: false, env: { NODE_ENV: 'production' } }),
+      /Secure/,
+      '注入 env 为生产 → 显式 false 无效（且说明只读注入 env，不读 process.env 的开发值）',
+    )
+    // 方向 B：真 env 说生产、注入 env 说开发 + 显式 false → 不带 Secure。
+    // 读 process.env 会得「生产 → 强制开」；读注入源才得「非生产 → 显式关」。反向再证。
+    process.env.NODE_ENV = 'production'
+    assert.doesNotMatch(
+      cookie({ secure: false, env: { NODE_ENV: 'development' } }),
+      /Secure/,
+      '注入 env 为非生产 → 显式 false 生效（不读 process.env 的生产值）',
+    )
+    // 默认（不传 secure/env）→ 恒 Secure（不看 process.env）。
+    assert.match(cookie({}), /Secure/, '默认恒 Secure')
+  } finally {
+    process.env.NODE_ENV = realNodeEnv
+    Date.now = realNow
+  }
+})
+
 test('renewSession：漏传 ttlSec 与签发侧不联动（按缺省 48h）——陷阱固化', () => {
   const secret = 's'.repeat(32)
   const { value, iat } = issueSession('u_12345678', { secret, ttlSec: 60 })

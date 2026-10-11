@@ -1,0 +1,32 @@
+{
+  "endpoints": [
+    {
+      "action": "config",
+      "method": "GET"
+    },
+    {
+      "action": "dev-login",
+      "method": "POST"
+    },
+    {
+      "action": "sso-verify",
+      "method": "POST"
+    },
+    {
+      "action": "wx-qrcode",
+      "method": "GET"
+    },
+    {
+      "action": "wx-poll",
+      "method": "GET"
+    },
+    {
+      "action": "weapp",
+      "method": "POST"
+    },
+    {
+      "action": "logout",
+      "method": "POST"
+    }
+  ]
+}

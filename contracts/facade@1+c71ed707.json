@@ -1,0 +1,42 @@
+{
+  "operations": {
+    "introspect": {
+      "method": "POST",
+      "responseKeys": [
+        "ok",
+        "openid"
+      ]
+    },
+    "profile": {
+      "method": "POST",
+      "responseKeys": [
+        "ok",
+        "profile"
+      ]
+    },
+    "qr.issue": {
+      "method": "POST",
+      "responseKeys": [
+        "ok",
+        "scene",
+        "qrUrl",
+        "expiresIn",
+        "pairCode",
+        "confirm"
+      ]
+    },
+    "qr.poll": {
+      "method": "POST",
+      "responseKeys": [
+        "ok",
+        "status",
+        "openid",
+        "nickname",
+        "avatar"
+      ]
+    }
+  },
+  "pending": [
+    "unionid"
+  ]
+}

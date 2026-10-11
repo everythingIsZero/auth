@@ -59,6 +59,28 @@ export function sessionCookieName(opts) {
 }
 
 /**
+ * 会话 cookie 的 `Secure` 决策（**单一口径**：签发侧 `createAuthServer` 与续期侧 `renewSession` 共用）。
+ *
+ * 语义（S6「生产强制 Secure，不依赖 NODE_ENV 默认」）：
+ *   - **默认恒 `true`**——不看 `NODE_ENV`，生产路径不可能漏掉 `Secure`。
+ *   - 仅当显式 `secure === false` **且** 当前**非生产**（`envGet('NODE_ENV') !== 'production'`）→ 才 `false`，
+ *     供本地 http 开发。
+ *   - **fail-closed**：生产里显式 `false` **无效**（仍 `true`）——宁 cookie 被 http 环境拒绝（显式误配可见），
+ *     也不静默丢弃 `Secure`。
+ *
+ * 纯函数、零依赖（只读注入的 env 访问器），故可放同构层 core。
+ *
+ * @param {(key: string) => string | undefined} envGet env 访问器（注入或 `process.env`）
+ * @param {unknown} secure 显式配置；只有**严格 `false`** 才可能关，其余（含缺省/`true`）→ `true`
+ * @returns {boolean}
+ */
+export function resolveSessionSecure(envGet, secure) {
+  if (secure !== false) return true
+  const ne = typeof envGet === 'function' ? envGet('NODE_ENV') : undefined
+  return String(ne == null ? '' : ne) === 'production'
+}
+
+/**
  * 判会话是否已过"续期点"（静默续期决策，纯函数、**零密码学依赖**，故可在 Edge / 浏览器跑）。
  * 判定：age=now-iat；age ≥ 半衰期 → true。半衰期缺省 ttlSec/2（48h → 24h），
  * 上限收敛为 ttlSec（即便传入更大的 halfLife，到期前也必续）。

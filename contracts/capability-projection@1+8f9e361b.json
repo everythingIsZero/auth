@@ -1,0 +1,17 @@
+{
+  "capabilities": [
+    "isWechat",
+    "isWechatMobile",
+    "isDesktopWechat",
+    "isMiniprogram",
+    "isDouyin",
+    "isPwa",
+    "isMobile",
+    "isDesktop",
+    "isSmallGame"
+  ],
+  "login": {
+    "isMobileBrowser": "isMobile",
+    "isWechatInApp": "isWechatMobile"
+  }
+}

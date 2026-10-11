@@ -1,0 +1,11 @@
+{
+  "contracts": {
+    "analytics-policy": "1+1e1a92fe",
+    "cache-policy": "1+f9681c71",
+    "capability-projection": "1+8f9e361b",
+    "endpoints": "1+7483ca8a",
+    "facade": "1+c71ed707",
+    "sensitive-prefixes": "1+262b9b7c",
+    "share-url-policy": "1+34c944cd"
+  }
+}

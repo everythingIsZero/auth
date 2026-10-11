@@ -20,7 +20,7 @@
  * Edge / 浏览器不可用本模块（无 node:crypto）；同构常量与纯函数见同包 core.mjs。
  */
 import crypto from 'node:crypto'
-import { APP_SESSION_COOKIE, SESSION_TTL_SEC, renewIfStale } from './core.mjs'
+import { APP_SESSION_COOKIE, SESSION_TTL_SEC, renewIfStale, resolveSessionSecure } from './core.mjs'
 
 // 向后兼容：`renewIfStale` 实现已迁 `core.mjs`（纯函数、零 crypto）；此处仅再导出同一绑定，
 // 老消费方仍可从 `@hxym18/auth/node` 取（与 core 同源，不产生 export* 歧义）。
@@ -215,7 +215,7 @@ export function readSession(value, opts) {
   return { uid: m[1], iat }
 }
 
-/** 会话 cookie 头（httpOnly；生产 Secure；Path=/；SameSite=Lax）——与 server.mjs 同款，本模块自持避免循环依赖 */
+/** 会话 cookie 头（httpOnly；**默认恒 `Secure`**，仅非生产可显式关；Path=/；SameSite=Lax）——与 server.mjs 同款，本模块自持避免循环依赖 */
 function sessionCookieHeader(name, value, maxAgeSec, secure) {
   return `${name}=${value}; Path=/; HttpOnly;${secure ? ' Secure;' : ''} SameSite=Lax; Max-Age=${maxAgeSec}`
 }
@@ -228,9 +228,11 @@ function sessionCookieHeader(name, value, maxAgeSec, secure) {
  * Node middleware）。**Edge middleware 不能续期**——Edge 站把续期落到 Node 端点。
  *
  * @param {Request} req
- * @param {{ secret: string, ttlSec?: number, cookieName?: string, secure?: boolean }} opts
+ * @param {{ secret: string, ttlSec?: number, cookieName?: string, secure?: boolean, env?: Record<string, string | undefined> | ((key: string) => string | undefined) }} opts
  *        secret 必填；ttlSec 缺省 172800；cookieName 缺省 app_session；
- *        secure 缺省由 `NODE_ENV==='production'` 判定（可显式覆写）
+ *        secure 缺省恒 `true`（不看 `NODE_ENV`）；仅显式 `false` 且当前非生产才关，生产里显式关无效（fail-closed）；
+ *        env 缺省 `process.env`，与签发侧 `createAuthServer` 的 `env` 注入**同口径**——注入 env 时：
+ *        secure 决策（是否生产）只读注入源，不读 `process.env`。
  * @returns {Response | null}
  */
 export function renewSession(req, opts) {
@@ -250,8 +252,13 @@ export function renewSession(req, opts) {
   if (!session) return null
   if (!renewIfStale(session.iat, { ttlSec })) return null
   const { value: fresh, maxAgeSec } = issueSession(session.uid, { secret, ttlSec })
-  const secure =
-    o.secure != null ? Boolean(o.secure) : typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production'
+  // env 与签发侧 createAuthServer 同口径：可注入对象或函数，缺省 process.env。
+  const envSource = o.env != null ? o.env : typeof process !== 'undefined' ? process.env : undefined
+  const envGet = (k) => {
+    const v = typeof envSource === 'function' ? envSource(k) : envSource ? envSource[k] : undefined
+    return v == null ? '' : String(v)
+  }
+  const secure = resolveSessionSecure(envGet, o.secure)
   const res = new Response(JSON.stringify({ ok: true }), {
     status: 200,
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },

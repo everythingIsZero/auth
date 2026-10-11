@@ -57,6 +57,13 @@ export type AuthRoutesConfig = {
      * 验证侧用 `@hxym18/auth/node` 的 `readSession(value, { secret })`。
      */
     deliver?: 'cookie' | 'token' | 'both'
+    /**
+     * 会话 cookie `Secure`（S6 硬化）。**缺省恒 `true`，不看 `NODE_ENV`**——生产路径不可能漏 `Secure`。
+     * 仅显式 `false` 且当前非生产（`env.NODE_ENV !== 'production'`）才关，供**本地 http 开发**；
+     * 生产里显式 `false` **无效**（fail-closed 仍 `true`）。本地开发请用此开关，**不要靠 `NODE_ENV` 推断**。
+     * 与续期侧 `renewSession` 的 `secure` 同一口径。
+     */
+    secure?: boolean
   }
   /** 锚定器类型；缺省 'identity' */
   anchor?: 'identity' | 'allowlist' | 'first-login'

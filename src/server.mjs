@@ -13,7 +13,7 @@
  * env 契约（缺省从 process.env 读，可显式覆写或注入 env）：AUTH_INTERNAL_URL / AUTH_INTERNAL_SECRET /
  * AUTH_ISSUE_ORG / WEAPP_APPID / WEAPP_SECRET / NODE_ENV。
  */
-import { APP_SESSION_COOKIE, SESSION_TTL_SEC, isTicket } from './core.mjs'
+import { APP_SESSION_COOKIE, SESSION_TTL_SEC, isTicket, resolveSessionSecure } from './core.mjs'
 import { callAuthServer, exchangeWeappCode, issueSession, readCookieValue, readSession, SESSION_UID_RE } from './node.mjs'
 
 /** 统一 no-store（票根/会话响应一律不可缓存） */
@@ -30,7 +30,7 @@ function json(body, status = 200) {
   })
 }
 
-/** 会话 cookie 头（httpOnly；生产 Secure；Path=/；SameSite=Lax——与各站存量写法逐字一致） */
+/** 会话 cookie 头（httpOnly；**默认恒 `Secure`**，仅非生产可显式关；Path=/；SameSite=Lax——与各站存量写法逐字一致） */
 function sessionCookieHeader(name, value, maxAgeSec, secure) {
   return `${name}=${value}; Path=/; HttpOnly;${secure ? ' Secure;' : ''} SameSite=Lax; Max-Age=${maxAgeSec}`
 }
@@ -106,7 +106,7 @@ function introspectFailure(kind) {
  * @param {{
  *   authServer?: { url?: string, secret?: string, org?: string },
  *   weapp?: { appId?: string, appSecret?: string, timeoutMs?: number },
- *   session: { secret: string | (() => string), ttlSec?: number, cookieName?: string },
+ *   session: { secret: string | (() => string), ttlSec?: number, cookieName?: string, secure?: boolean },
  *   anchor?: 'identity'|'allowlist'|'first-login',
  *   anchorEnv?: string | null,
  *   resolveIdentity?: (openid: string, ctx: { source: 'sso'|'qr'|'weapp', nickname?: string|null, avatar?: string|null, unionid?: string|null }) => Promise<{ uid: string, isNew?: boolean, displayName?: string|null, avatar?: string|null }|null> | { uid: string, isNew?: boolean, displayName?: string|null, avatar?: string|null } | null,
@@ -150,6 +150,9 @@ export function createAuthServer(config) {
    * 密钥是「运行期才注入」的环境变量，装配期往往读不到；缺配按 fail-closed 返 503，不签任何会话。
    */
   const secretOf = () => (typeof session.secret === 'function' ? session.secret() : session.secret)
+  // 会话 cookie `Secure`（S6 硬化，单一口径见 core.resolveSessionSecure）：默认恒 `Secure`（不看 `NODE_ENV`）；
+  // 仅显式 `session.secure === false` 且当前非生产才关（本地 http 开发）；生产里显式关无效（fail-closed）。
+  // 按请求解析（env 注入后可能变化），与续期侧 `renewSession` 同口径。
   /**
    * env 访问器：默认 process.env；可注入对象或 `(key) => value`（换运行时可注入，不读全局 env）。
    * 注意：核心仍经 node:crypto 签会话，运行时限 Node；Edge/CF 需自备签名。
@@ -269,7 +272,9 @@ export function createAuthServer(config) {
     if (deliver !== 'cookie') body.token = r.value
     const res = json(body)
     if (deliver !== 'token') {
-      const secure = envGet('NODE_ENV') === 'production'
+      // Secure 决策与续期侧（node.mjs renewSession）共用 core.resolveSessionSecure 同一口径：
+      // 默认恒 Secure；仅显式 session.secure===false 且非生产才关；生产里显式关无效（fail-closed）。
+      const secure = resolveSessionSecure(envGet, session.secure)
       res.headers.append('set-cookie', sessionCookieHeader(cookieName, r.value, r.maxAgeSec, secure))
     }
     return res

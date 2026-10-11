@@ -117,8 +117,18 @@ export interface RenewSessionOptions {
   ttlSec?: number
   /** 会话 cookie 名，缺省 'app_session' */
   cookieName?: string
-  /** cookie 是否带 `Secure`；缺省由 `NODE_ENV === 'production'` 判定 */
+  /**
+   * cookie 是否带 `Secure`。**缺省恒 `true`（不看 `NODE_ENV`）**；仅显式 `false` 且当前非生产
+   * （`env.NODE_ENV !== 'production'`）才关；生产里显式 `false` **无效**（fail-closed 仍 `true`）。
+   * 与签发侧 `createAuthServer` 的 `session.secure` 同一口径（`core.resolveSessionSecure`）。
+   */
   secure?: boolean
+  /**
+   * env 访问器：缺省 `process.env`；可传对象或 `(key) => value`，与签发侧 `createAuthServer` 的 `env`
+   * **同口径**。注入后 secure 决策（是否生产）只读注入源，不读 `process.env`——
+   * 供测试、Edge 代理、多租等「注入 env 的站」续期时也拿到与签发一致的 `Secure`。
+   */
+  env?: Record<string, string | undefined> | ((key: string) => string | undefined)
 }
 
 /**

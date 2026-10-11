@@ -23,6 +23,16 @@ export declare function isSessionValue(v: unknown): v is string
 /** 由身份类别取会话 Cookie 名：wechat → 'app_session_w'，否则 'app_session' */
 export declare function sessionCookieName(opts?: { wechat?: boolean }): string
 
+/**
+ * 会话 cookie 的 `Secure` 决策（单一口径，签发侧与续期侧共用）：
+ * 默认恒 `true`（不看 `NODE_ENV`）；仅显式 `secure === false` **且** 非生产
+ * （`envGet('NODE_ENV') !== 'production'`）→ `false`；生产里显式 `false` 无效（fail-closed 仍 `true`）。
+ */
+export declare function resolveSessionSecure(
+  envGet: (key: string) => string | undefined,
+  secure?: unknown
+): boolean
+
 export interface RenewIfStaleOptions {
   /** 会话 TTL（秒），缺省 172800（48h） */
   ttlSec?: number

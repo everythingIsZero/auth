@@ -4,8 +4,26 @@
 
 ## [Unreleased]
 
+下一 minor（拟 `0.9.0`）——含**行为变更**（会话 cookie `Secure` 口径），破坏本地 http 开发对 `NODE_ENV` 的隐式依赖。
+
+### Added
+
+- **`session.secure` 显式开关**（`createAuthServer` 的 `session` 配置）：控制会话 cookie 是否带 `Secure`。
+- **`renewSession(..., { secure, env })`**（`@hxym18/auth/node`）：续期侧新增 `secure` 显式开关与 `env` 注入，`env` 与签发侧 `createAuthServer` 的 `env` **同口径**（对象或 `(key) => value`，缺省 `process.env`）——注入 env 的站（测试 / Edge 代理 / 多租）续期时不再读 `process.env`，`Secure` 与签发一致。
+- **`resolveSessionSecure(envGet, secure)`**（`@hxym18/auth/core`）：`Secure` 决策的单一入口（纯函数，签发侧与续期侧共用）。
+
+### Changed（行为变更）
+
+- **会话 cookie `Secure` 默认恒开，不再依赖 `NODE_ENV`**（spec §S6「生产强制 `Secure`（不依赖 `NODE_ENV` 默认）」）。新语义：
+  - **默认恒 `Secure`**——不看 `NODE_ENV`，生产路径不可能漏掉 `Secure`；
+  - 仅**显式** `session.secure === false`（签发侧）/ `renewSession(..., { secure: false })`（续期侧）**且当前非生产**（`env.NODE_ENV !== 'production'`）才关，供**本地 http 开发**；
+  - **生产里显式关无效**（fail-closed 仍带 `Secure`）——选择「忽略」而非「抛错」：`renewSession` 契约是「不抛错、返 `null`」的分支型 helper，抛错会破坏该契约且给续期路径引入新的失败模式；忽略则在任何环境都保住安全属性，显式误配可见（http 下 cookie 被浏览器拒）。
+- **`renewSession` 不再直接读 `process.env`**：`Secure` 决策改由 `env` 选项（缺省 `process.env`）供给，与签发侧同口径（修复「注入 env 的站续期拿不到 `Secure`」）。
+- **迁移（本地 http 开发）**：旧行为靠「`NODE_ENV != 'production'` 自动去 `Secure`」；现须**显式**声明 `session.secure: false`（签发）+ `renewSession(..., { secure: false, env })`（续期）。**不要再用 `NODE_ENV` 推断 `Secure`**；生产部署无需改动（默认即带 `Secure`）。
+
 ### Docs
 
+- README 更新「会话 cookie 硬化」为实际行为（`Secure` 默认恒开 + 显式开关 + `renewSession` 的 `env` 同口径）。
 - README 补 S6 文档义务（纯文档，无行为变更）：`session.deliver:'both'` 的 body token 暴露风险与适用/不适用场景；`__Host-` cookie 前缀**评估结论：暂不采用**（`app_session` 已 host-only、兼容，但改名破坏性 + 强制 Secure 打断本地 http 开发）；token 吊销**登记为后续独立事项**（无状态 HMAC 无吊销名单，绝对过期只相对最后签发，续期会重置 `iat` 且无总寿命上限）。
 
 ## [0.8.0] - 2026-10-11

@@ -46,6 +46,41 @@ test('server：env 传函数亦可（运行时取 env）', async () => {
   assert.match(res.headers.get('set-cookie'), /Secure/)
 })
 
+/* ---- S6 cookie 硬化：Secure 默认恒开，仅非生产可显式关（失败即 fail-closed 保 Secure） ---- */
+
+/** 造一个能签发 cookie 的最小站（allowlist 免 resolveIdentity，减少噪声） */
+function issueRoutes(session, env) {
+  stubFetch(() => jsonResponse({ ok: true, openid: 'owner-openid-0001' }))
+  return createAuthServer({
+    session: { secret: 's', ...session },
+    authServer: { url: 'http://x', secret: 'k' },
+    anchor: 'allowlist',
+    anchorEnv: 'TEST_INJ_OWNER',
+    env: { TEST_INJ_OWNER: 'owner-openid-0001', ...env },
+  })
+}
+async function issuedCookie(session, env) {
+  const routes = issueRoutes(session, env)
+  const res = await routes.ssoVerify(new Request('http://x/', { method: 'POST', body: JSON.stringify({ ticket: TICKET }) }))
+  assert.equal(res.status, 200)
+  return res.headers.get('set-cookie')
+}
+
+test('server(S6)①：默认（无 NODE_ENV）签发 cookie 恒带 Secure', async () => {
+  const cookie = await issuedCookie(undefined, {})
+  assert.match(cookie, /Secure/, '默认必须 Secure，不看 NODE_ENV')
+})
+
+test('server(S6)②：NODE_ENV=production 时显式 session.secure=false 无效 → 仍 Secure（fail-closed）', async () => {
+  const cookie = await issuedCookie({ secure: false }, { NODE_ENV: 'production' })
+  assert.match(cookie, /Secure/, '生产里显式关 Secure 必须被忽略，仍带 Secure')
+})
+
+test('server(S6)③：非生产 + 显式 session.secure=false → 不带 Secure（本地 http 开发）', async () => {
+  assert.doesNotMatch(await issuedCookie({ secure: false }, { NODE_ENV: 'development' }), /Secure/)
+  assert.doesNotMatch(await issuedCookie({ secure: false }, {}), /Secure/, '无 NODE_ENV 亦视为非生产')
+})
+
 test('hono：Context → 核心 Request（ssoVerify 签会话 / wxPoll 取查询串）', async () => {
   stubFetch((url) => {
     if (url.includes('introspect')) return jsonResponse({ ok: true, openid: 'openid-1' })
