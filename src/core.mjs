@@ -2,7 +2,7 @@
  * core.mjs — @app/auth 同构层（零依赖、纯净、可在 Edge / 浏览器 / Node 跑）
  *
  * 收敛票根格式、cookie 名、provider 名、scene 格式、SSO 跳转与 redirect 白名单。
- * 本层不 import node:crypto / node:buffer，只用 Web 标准（URL / RegExp），
+ * 本层不 import 任何 Node 内置模块（crypto / buffer），只用 Web 标准（URL / RegExp），
  * 故 Next.js Edge runtime 可直载。需要 Node 密码学原语（sha1 验签 / HMAC）的
  * 消费方改用同包的 node.mjs（Node-only）。
  *
@@ -56,6 +56,31 @@ export function isSessionValue(v) {
  */
 export function sessionCookieName(opts) {
   return opts && opts.wechat ? APP_SESSION_WECHAT_COOKIE : APP_SESSION_COOKIE
+}
+
+/**
+ * 判会话是否已过"续期点"（静默续期决策，纯函数、**零 crypto**，故可在 Edge / 浏览器跑）。
+ * 判定：age=now-iat；age ≥ 半衰期 → true。半衰期缺省 ttlSec/2（48h → 24h），
+ * 上限收敛为 ttlSec（即便传入更大的 halfLife，到期前也必续）。
+ * iat 非法（NaN/≤0）→ true（保守起见按需续期）；iat 在未来（时钟偏移）→ false。
+ *
+ * 运行时边界（S6）：本函数只做判定；**重签回写需 Node 密码学原语，仅 Node 运行时**（`node.mjs` 的
+ * `renewSession`）。**Edge middleware 不能续期**，Edge 站把续期落到 Node 端点。
+ *
+ * @param {number} iat 签发时间（Unix 秒，readSession 产物）
+ * @param {{ ttlSec?: number, halfLife?: number }} [opts]
+ * @returns {boolean} true=已陈旧，调用方应重签会话；false=仍新鲜
+ */
+export function renewIfStale(iat, opts) {
+  if (!Number.isFinite(iat) || iat <= 0) return true
+  const ttlRaw = opts && opts.ttlSec != null ? Number(opts.ttlSec) : SESSION_TTL_SEC
+  const ttlSec = Number.isFinite(ttlRaw) && ttlRaw > 0 ? ttlRaw : SESSION_TTL_SEC
+  const halfRaw = opts && opts.halfLife != null ? Number(opts.halfLife) : ttlSec / 2
+  const halfLife = Number.isFinite(halfRaw) && halfRaw > 0 ? halfRaw : ttlSec / 2
+  const threshold = Math.min(halfLife, ttlSec)
+  const age = Math.floor(Date.now() / 1000) - iat
+  if (age < 0) return false
+  return age >= threshold
 }
 
 /** 票根格式：48 位 hex（192bit 随机，大小写不敏感）；单源 auth 站 SESSION_RE */

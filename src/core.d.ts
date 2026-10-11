@@ -23,6 +23,19 @@ export declare function isSessionValue(v: unknown): v is string
 /** 由身份类别取会话 Cookie 名：wechat → 'app_session_w'，否则 'app_session' */
 export declare function sessionCookieName(opts?: { wechat?: boolean }): string
 
+export interface RenewIfStaleOptions {
+  /** 会话 TTL（秒），缺省 172800（48h） */
+  ttlSec?: number
+  /** 半衰期（秒），缺省 ttlSec/2；续期阈值上限收敛为 ttlSec */
+  halfLife?: number
+}
+
+/**
+ * 判会话是否已过续期点：age=now-iat，age ≥ 半衰期 → true（纯函数，零 crypto，Edge 可载）。
+ * iat 非法（NaN/≤0）→ true；iat 在未来（时钟偏移）→ false。重签回写限 Node（`node.mjs` 的 `renewSession`）。
+ */
+export declare function renewIfStale(iat: number, opts?: RenewIfStaleOptions): boolean
+
 /** 判值是否为合法票根（48 位 hex，大小写不敏感） */
 export declare function isTicket(v: unknown): v is string
 

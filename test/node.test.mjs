@@ -13,7 +13,7 @@ import {
   callAuthServer,
   issueSession,
   readSession,
-  renewIfStale,
+  renewSession,
   readCookieValue,
   readLegacySession,
   LEGACY_HMD_COOKIE,
@@ -23,6 +23,7 @@ import {
   LEGACY_SESSION_COOKIES,
   hmacSign,
 } from '../src/node.mjs'
+import { renewIfStale } from '../src/core.mjs'
 import * as index from '../src/index.mjs'
 
 const SECRET = 'test-secret-001'
@@ -331,4 +332,97 @@ test('index 出口聚合：新 API 均已挂载', () => {
   // 往返经 index 入口可用
   const s = index.issueSession(UID, { secret: SECRET })
   assert.deepEqual(index.readSession(s.value, { secret: SECRET }), { uid: UID, iat: s.iat })
+})
+
+/* ---------------- Task A2：会话绝对过期 + 续期（Node-only 回写） ---------------- */
+
+test('readSession：过期（iat+ttl<now）返回 null', () => {
+  const secret = 's'.repeat(32)
+  const { value } = issueSession('u_12345678', { secret, ttlSec: 10 })
+  const past = Date.now() + 11_000
+  const realNow = Date.now
+  Date.now = () => past
+  try {
+    assert.equal(readSession(value, { secret, ttlSec: 10 }), null)
+  } finally {
+    Date.now = realNow
+  }
+})
+
+test('readSession：未过期（now ≤ iat+ttl）仍返回会话', () => {
+  const secret = 's'.repeat(32)
+  const { value, iat } = issueSession('u_12345678', { secret, ttlSec: 10 })
+  const realNow = Date.now
+  Date.now = () => (iat + 9) * 1000
+  try {
+    assert.deepEqual(readSession(value, { secret, ttlSec: 10 }), { uid: 'u_12345678', iat })
+  } finally {
+    Date.now = realNow
+  }
+})
+
+test('renewIfStale：纯函数（core），过半衰期返回 true', () => {
+  assert.equal(renewIfStale(Math.floor(Date.now() / 1000) - 99999, { ttlSec: 100 }), true)
+  assert.equal(renewIfStale(Math.floor(Date.now() / 1000), { ttlSec: 100 }), false)
+})
+
+test('renewSession：stale 且未过期 → 带 Set-Cookie 的 Response；未到点/已过期 → null', () => {
+  const secret = 's'.repeat(32)
+  const { value, iat } = issueSession('u_12345678', { secret, ttlSec: 100 })
+  const realNow = Date.now
+  const req = () => new Request('http://x/', { headers: { cookie: `app_session=${value}` } })
+  // 新鲜（age=0 < halfLife=50）→ null
+  assert.equal(renewSession(req(), { secret, ttlSec: 100 }), null)
+  // 过半衰期但未过期（age=60）→ 带 Set-Cookie 的 Response
+  Date.now = () => (iat + 60) * 1000
+  try {
+    const res = renewSession(req(), { secret, ttlSec: 100 })
+    assert.ok(res instanceof Response)
+    const setCookie = res.headers.get('set-cookie')
+    assert.match(setCookie, /^app_session=/)
+    assert.match(setCookie, /Max-Age=100/)
+    const fresh = setCookie.slice('app_session='.length).split(';')[0]
+    assert.deepEqual(readSession(fresh, { secret, ttlSec: 100 }), { uid: 'u_12345678', iat: iat + 60 })
+  } finally {
+    Date.now = realNow
+  }
+  // 已绝对过期（age=101 > ttl）→ null（不可续期）
+  Date.now = () => (iat + 101) * 1000
+  try {
+    assert.equal(renewSession(req(), { secret, ttlSec: 100 }), null)
+  } finally {
+    Date.now = realNow
+  }
+})
+
+test('renewSession：无/无效会话 / 缺 secret → null（不抛错）', () => {
+  const secret = 's'.repeat(32)
+  assert.equal(renewSession(new Request('http://x/'), { secret }), null)
+  assert.equal(renewSession(new Request('http://x/', { headers: { cookie: 'app_session=bad' } }), { secret }), null)
+  assert.equal(renewSession(new Request('http://x/'), {}), null)
+  assert.equal(renewSession(null, { secret }), null)
+})
+
+test('renewSession：支持 Bearer token 输入 + secure 覆写', () => {
+  const secret = 's'.repeat(32)
+  const { value, iat } = issueSession('u_12345678', { secret, ttlSec: 100 })
+  const realNow = Date.now
+  Date.now = () => (iat + 60) * 1000
+  try {
+    const res = renewSession(new Request('http://x/', { headers: { authorization: `Bearer ${value}` } }), {
+      secret,
+      ttlSec: 100,
+      secure: true,
+    })
+    assert.match(res.headers.get('set-cookie'), /Secure;/)
+  } finally {
+    Date.now = realNow
+  }
+})
+
+test('core 出口：renewIfStale 已移入 core（node 仅再导出同一绑定）', async () => {
+  const core = await import('../src/core.mjs')
+  assert.equal(typeof core.renewIfStale, 'function')
+  const node = await import('../src/node.mjs')
+  assert.equal(node.renewIfStale, core.renewIfStale)
 })

@@ -40,7 +40,8 @@ function sessionCookieHeader(name, value, maxAgeSec, secure) {
  * 依次取 cookie（`cookieName`，缺省 `app_session`）或 `Authorization: Bearer <值>`，验签 → `{ uid, iat }`。
  * 无效/缺失 → null（不抛错）。与 `createAuthServer` 的投递方式（cookie / token / both）配对。
  * @param {Request} req
- * @param {{ secret?: string, cookieName?: string }} opts
+ * @param {{ secret?: string, cookieName?: string, ttlSec?: number }} opts
+ *        ttlSec 透传给 `readSession` 做绝对过期判定（缺省 172800=48h）
  * @returns {{ uid: string, iat: number } | null}
  */
 export function getSession(req, opts) {
@@ -54,7 +55,7 @@ export function getSession(req, opts) {
     if (m) value = m[1].trim()
   }
   if (!value) return null
-  return readSession(value, { secret })
+  return readSession(value, { secret, ttlSec: o.ttlSec })
 }
 
 /**

@@ -13,13 +13,18 @@
  *        apps/fang/src/lib/auth-server-client.ts、apps/ka/server/src/qr.ts
  *        三处逐字核对：POST JSON + header `x-auth-secret`，15s 超时（ka 用 8s）
  *        （前两处随 2026-09-16 SSO 配置驱动批 U4/U6 迁移已删；ka 侧仍自带实现，待项目侧迁移）
- *      - issueSession / readSession / renewIfStale：版本前缀会话值（v1）+ 48h TTL + 静默续期
+ *      - issueSession / readSession / renewSession：版本前缀会话值（v1）+ 48h TTL + 绝对过期 + 静默续期
+ *        （renewIfStale 纯判定已移 core.mjs；本模块只做需 crypto 的签发/验签与续期回写）
  *      - 旧 cookie 双读：hmd2/hmd2w（HMAC 系）+ wi_session/fang_session（64hex 服务端 token 系）
  *
  * Edge / 浏览器不可用本模块（无 node:crypto）；同构常量与纯函数见同包 core.mjs。
  */
 import crypto from 'node:crypto'
-import { SESSION_TTL_SEC } from './core.mjs'
+import { APP_SESSION_COOKIE, SESSION_TTL_SEC, renewIfStale } from './core.mjs'
+
+// 向后兼容：`renewIfStale` 实现已迁 `core.mjs`（纯函数、零 crypto）；此处仅再导出同一绑定，
+// 老消费方仍可从 `@hxym18/auth/node` 取（与 core 同源，不产生 export* 歧义）。
+export { renewIfStale } from './core.mjs'
 
 /**
  * 微信回调同款验签：sha1([token,timestamp,nonce] 字典序拼接) 与 signature 比对。
@@ -159,7 +164,7 @@ export async function callAuthServer(baseUrl, path, payload, opts = {}) {
  * hmacSign/hmacVerify；差异仅在 payload 段数（hmd=`<prefix>.<uid>`，本层=`v1.<uid>.<iat>`）。
  *
  * 与 hmd 存量格式的取舍：hmd cookie 的 TTL 只存 Max-Age（值内无 iat），无法判断"该续期了"；
- * B1.4 把 iat 写进签名 payload，readSession 才可返回 iat、renewIfStale 才能据"半衰期"静默续期。
+ * B1.4 把 iat 写进签名 payload，readSession 才可返回 iat、renewIfStale（core.mjs）才能据"半衰期"静默续期。
  * -------------------------------------------------------------------------- */
 
 /** 会话值版本前缀（格式演进/迁移锚点） */
@@ -189,9 +194,10 @@ export function issueSession(uid, opts) {
 }
 
 /**
- * 读会话值：验签通过且形态合法 → `{ uid, iat }`（iat=Unix 秒），否则 null（不抛错）。
+ * 读会话值：验签通过、形态合法**且未过绝对过期** → `{ uid, iat }`（iat=Unix 秒），否则 null（不抛错）。
+ * 绝对过期（S6）：`now > iat + ttlSec` → null；ttlSec 缺省 `SESSION_TTL_SEC`（48h）。
  * @param {unknown} value 会话 cookie / Bearer token 值
- * @param {{ secret?: string }} [opts]
+ * @param {{ secret?: string, ttlSec?: number }} [opts]
  * @returns {{ uid: string, iat: number } | null}
  */
 export function readSession(value, opts) {
@@ -203,29 +209,55 @@ export function readSession(value, opts) {
   if (!m) return null
   const iat = Number(m[2])
   if (!Number.isFinite(iat) || iat <= 0) return null
+  const ttlRaw = opts && opts.ttlSec != null ? Number(opts.ttlSec) : SESSION_TTL_SEC
+  const ttlSec = Number.isFinite(ttlRaw) && ttlRaw > 0 ? ttlRaw : SESSION_TTL_SEC
+  if (Math.floor(Date.now() / 1000) > iat + ttlSec) return null
   return { uid: m[1], iat }
 }
 
+/** 会话 cookie 头（httpOnly；生产 Secure；Path=/；SameSite=Lax）——与 server.mjs 同款，本模块自持避免循环依赖 */
+function sessionCookieHeader(name, value, maxAgeSec, secure) {
+  return `${name}=${value}; Path=/; HttpOnly;${secure ? ' Secure;' : ''} SameSite=Lax; Max-Age=${maxAgeSec}`
+}
+
 /**
- * 判会话是否已过"续期点"（静默续期决策，不验签——iat 由 readSession 产出）。
- * 判定：age=now-iat；age ≥ 半衰期 → true。半衰期缺省 ttlSec/2（48h → 24h），
- * 上限收敛为 ttlSec（即便传入更大的 halfLife，到期前也必续）。
- * iat 非法（NaN/≤0）→ true（保守起见按需续期）；iat 在未来（时钟偏移）→ false。
+ * 续期回写（**Node-only**）：从请求读会话，**未过期但已过续期点** → 返带 `Set-Cookie` 的 `Response`；
+ * 否则（无/无效/未到续期点/已绝对过期）→ null（不抛错）。
  *
- * @param {number} iat 签发时间（Unix 秒，readSession 产物）
- * @param {{ ttlSec?: number, halfLife?: number }} [opts]
- * @returns {boolean} true=已陈旧，调用方应重签会话；false=仍新鲜
+ * 运行时边界（S6）：重签需 `node:crypto`，故**续期回写仅在 Node 运行时**（Route Handler / Server Action /
+ * Node middleware）。**Edge middleware 不能续期**——Edge 站把续期落到 Node 端点。
+ *
+ * @param {Request} req
+ * @param {{ secret: string, ttlSec?: number, cookieName?: string, secure?: boolean }} opts
+ *        secret 必填；ttlSec 缺省 172800；cookieName 缺省 app_session；
+ *        secure 缺省由 `NODE_ENV==='production'` 判定（可显式覆写）
+ * @returns {Response | null}
  */
-export function renewIfStale(iat, opts) {
-  if (!Number.isFinite(iat) || iat <= 0) return true
-  const ttlRaw = opts && opts.ttlSec != null ? Number(opts.ttlSec) : SESSION_TTL_SEC
+export function renewSession(req, opts) {
+  const o = opts || {}
+  const secret = o.secret
+  if (typeof secret !== 'string' || !secret || !req || !req.headers) return null
+  const cookieName = o.cookieName || APP_SESSION_COOKIE
+  const ttlRaw = o.ttlSec != null ? Number(o.ttlSec) : SESSION_TTL_SEC
   const ttlSec = Number.isFinite(ttlRaw) && ttlRaw > 0 ? ttlRaw : SESSION_TTL_SEC
-  const halfRaw = opts && opts.halfLife != null ? Number(opts.halfLife) : ttlSec / 2
-  const halfLife = Number.isFinite(halfRaw) && halfRaw > 0 ? halfRaw : ttlSec / 2
-  const threshold = Math.min(halfLife, ttlSec)
-  const age = Math.floor(Date.now() / 1000) - iat
-  if (age < 0) return false
-  return age >= threshold
+  let value = readCookieValue(req.headers.get('cookie') || '', cookieName)
+  if (!value) {
+    const m = /^Bearer\s+(.+)$/i.exec(req.headers.get('authorization') || '')
+    if (m) value = m[1].trim()
+  }
+  if (!value) return null
+  const session = readSession(value, { secret, ttlSec })
+  if (!session) return null
+  if (!renewIfStale(session.iat, { ttlSec })) return null
+  const { value: fresh, maxAgeSec } = issueSession(session.uid, { secret, ttlSec })
+  const secure =
+    o.secure != null ? Boolean(o.secure) : typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production'
+  const res = new Response(JSON.stringify({ ok: true }), {
+    status: 200,
+    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+  })
+  res.headers.append('set-cookie', sessionCookieHeader(cookieName, fresh, maxAgeSec, secure))
+  return res
 }
 
 /* -------------------------------------------------------------------------- *

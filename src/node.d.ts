@@ -55,6 +55,13 @@ export declare function callAuthServer<T = Record<string, unknown>>(
 /* ---- 统一会话原语（B1.4） ---- */
 
 /**
+ * `renewIfStale` 实现已迁 `core.mjs`（纯函数、零 crypto，Edge 可载）；此处再导出同一绑定，
+ * 保持 `@hxym18/auth/node` 向后兼容。新代码请优先从 `@hxym18/auth/core` 取。
+ */
+export { renewIfStale } from './core'
+export type { RenewIfStaleOptions } from './core'
+
+/**
  * 会话值版本前缀（'v1'）。值格式 `v1.<uid>.<iat>.<b64url(sig)>`，
  * sig=HMAC-SHA256(key=sha256(secret), msg=`v1.<uid>.<iat>`)（base64url）——
  * 与 apps/hmd/src/lib/session.ts 同算法（key=sha256(secret) 派生 + base64url + 末段 '.' 切分），
@@ -83,28 +90,39 @@ export declare function issueSession(uid: string, opts: IssueSessionOptions): Is
 
 export interface ReadSessionOptions {
   secret?: string
+  /** 会话 TTL（秒），缺省 172800（48h）；`now > iat + ttlSec` 视为绝对过期 → null */
+  ttlSec?: number
 }
 
 /**
- * 读会话值：验签通过且形态合法 → `{ uid, iat }`（iat=Unix 秒），否则 null（不抛错）。
+ * 读会话值：验签通过、形态合法**且未过绝对过期**（`now ≤ iat + ttlSec`）→ `{ uid, iat }`，
+ * 否则 null（不抛错）。ttlSec 缺省 172800（48h）。
  */
 export declare function readSession(
   value: unknown,
   opts?: ReadSessionOptions
 ): { uid: string; iat: number } | null
 
-export interface RenewIfStaleOptions {
+export interface RenewSessionOptions {
+  /** 签名密钥（内部 sha256 派生为 HMAC key）；必填 */
+  secret: string
   /** 会话 TTL（秒），缺省 172800（48h） */
   ttlSec?: number
-  /** 半衰期（秒），缺省 ttlSec/2；续期阈值上限收敛为 ttlSec */
-  halfLife?: number
+  /** 会话 cookie 名，缺省 'app_session' */
+  cookieName?: string
+  /** cookie 是否带 `Secure`；缺省由 `NODE_ENV === 'production'` 判定 */
+  secure?: boolean
 }
 
 /**
- * 判会话是否已过续期点：age=now-iat，age ≥ 半衰期 → true。
- * iat 非法（NaN/≤0）→ true；iat 在未来（时钟偏移）→ false。
+ * 续期回写（**Node-only**）：读请求会话（cookie 或 `Authorization: Bearer`），未过期但已过续期点 →
+ * 返带 `Set-Cookie` 的 200 `Response`；否则（无/无效/未到续期点/已绝对过期）→ null。
+ * 重签依赖 `node:crypto`，**Edge middleware 不能续期**（Edge 站把续期落到 Node 端点）。
  */
-export declare function renewIfStale(iat: number, opts?: RenewIfStaleOptions): boolean
+export declare function renewSession(
+  req: Request,
+  opts: RenewSessionOptions
+): Response | null
 
 /* ---- 旧 cookie 双读（迁移期） ---- */
 

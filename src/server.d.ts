@@ -113,5 +113,5 @@ export declare function createAuthServer(config: AuthRoutesConfig): AuthRoutes
  */
 export declare function getSession(
   req: Request,
-  opts: { secret?: string; cookieName?: string }
+  opts: { secret?: string; cookieName?: string; ttlSec?: number }
 ): { uid: string; iat: number } | null

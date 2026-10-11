@@ -167,6 +167,22 @@ test('server：getSession 读 cookie / Bearer → uid；无效/缺失 → null',
   assert.equal(getSession(new Request('http://x/', { headers: { cookie: `app_session=${value}` } }), { secret: 'wrong' }), null)
 })
 
+test('server：getSession 透传 ttlSec 做绝对过期判定（缺省 48h）', () => {
+  const { value, iat } = issueSession('user-0001', { secret: 's', ttlSec: 10 })
+  const realNow = Date.now
+  Date.now = () => (iat + 11) * 1000
+  try {
+    assert.equal(
+      getSession(new Request('http://x/', { headers: { cookie: `app_session=${value}` } }), { secret: 's', ttlSec: 10 }),
+      null,
+    )
+  } finally {
+    Date.now = realNow
+  }
+  // 未传 ttlSec → 缺省 172800（48h），仍在有效期内
+  assert.equal(getSession(new Request('http://x/', { headers: { cookie: `app_session=${value}` } }), { secret: 's' }).uid, 'user-0001')
+})
+
 test('server：loadProfile 读回资料——weapp 继承已存昵称/头像（resolveIdentity 未给时）', async () => {
   globalThis.fetch = async () => new Response(JSON.stringify({ openid: 'o-weapp' }), { status: 200 })
   const routes = createAuthServer({

@@ -16,11 +16,11 @@
 | `@hxym18/auth/server` | 服务端（框架无关；**运行时限 Node**） | `createAuthServer`（核心）+ `getSession`（读 cookie/Bearer → uid）。Next/Hono 薄适配；Edge/CF 需自备签名 |
 | `@hxym18/auth/next` | Next.js 服务端 | `createAuthRoutes`（= 核心的 Next 出口名，薄层） |
 | `@hxym18/auth/hono` | Hono 服务端 | `createHonoAuthRoutes`：核心的 Hono 薄适配（Context→Request，几行） |
-| `@hxym18/auth/node` | Node | 会话签名/验签、`callAuthServer`、`exchangeWeappCode`（小程序换码，含 unionid） |
+| `@hxym18/auth/node` | Node | 会话签名/验签、`renewSession`（续期回写，Node-only）、`callAuthServer`、`exchangeWeappCode`（小程序换码，含 unionid） |
 | `@hxym18/auth/controller` | 全环境（零框架依赖） | 登录控制器：按端分流、SSO 跳转/回跳、PC 取码轮询、手机配对码、dev-login |
 | `@hxym18/auth/react` | 浏览器 + React | `useSsoLogin` 钩子（接线 + 状态订阅） |
 | `@hxym18/auth/taro` | Taro（H5/小程序） | `createTaroLogin` + `createTaroApi`（H5）；`createWeappLogin`（取 code）；`createWeappProfile`（资料采集）；小程序端 controller 惰性 |
-| `@hxym18/auth/core` | 浏览器/Edge | 同构常量与纯函数（票根名/格式、redirect 白名单、`buildAuthRedirect`、`profileFallback`、`loginCapsFromCapabilities`） |
+| `@hxym18/auth/core` | 浏览器/Edge | 同构常量与纯函数（票根名/格式、redirect 白名单、`buildAuthRedirect`、`renewIfStale`、`profileFallback`、`loginCapsFromCapabilities`） |
 | `@hxym18/auth`（`.`） | Node | `core` + `node` 聚合（含 `node:crypto`，勿在 Edge 引） |
 
 > **换框架不用重写**：登录逻辑只在 `server.mjs` 写一次（Web `Request`/`Response`）。换掉 Next/Hono 时，新框架只需几行适配（`c.req.raw` ↔ `Request`）；不属 Web 标准的框架（Express）用 `@hxym18/auth/server` + 一行 `dispatch`，登录逻辑零改动。
@@ -90,7 +90,9 @@ export function LoginPanel() {
 - `token`：响应带 `{ token }`、不设 cookie——供 **Bearer 到处用**的站（Taro/Hono token 模型）。
 - `both`：两者都给。
 
-验证侧用 `@hxym18/auth/node` 的 `readSession(value, { secret })`（cookie 值 / Bearer token 通用），或直接用 `getSession(req, { secret, cookieName })`（读 cookie 或 `Bearer` → `{ uid, iat } | null`）。
+验证侧用 `@hxym18/auth/node` 的 `readSession(value, { secret, ttlSec })`（cookie 值 / Bearer token 通用；`now > iat + ttlSec` 判**绝对过期**，`ttlSec` 缺省 48h），或直接用 `getSession(req, { secret, cookieName, ttlSec })`（读 cookie 或 `Bearer` → `{ uid, iat } | null`）。
+
+**会话续期 `renewSession(req, { secret, ttlSec, cookieName })`**（`@hxym18/auth/node`）：读请求会话（cookie 或 `Bearer`），**未过期但已过续期点**（`renewIfStale`）→ 返带 `Set-Cookie` 的 `Response`，否则 `null`。**续期回写仅 Node 运行时可用；Edge middleware 不可续期**（重签依赖 `node:crypto`）——Edge 站把续期落到 Node 端点（Route Handler / Server Action / Node middleware）。纯判定 `renewIfStale(iat, { ttlSec, halfLife })` 在同构层 `@hxym18/auth/core`（零 `node:crypto`，Edge 可载）。
 
 **资料读回 `loadProfile(uid)`**（可选）：登录后按 uid 读本站已存资料（昵称/头像）——`resolveIdentity` 未给的字段用它补齐，weapp 端借此**继承 H5 昵称/头像**。故障降级，不阻塞登录。
 
