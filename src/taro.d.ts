@@ -1,6 +1,7 @@
 import type { LoginCaps, LoginApi, LoginAdapter, LoginController } from './controller'
 
 export interface CreateTaroLoginOptions {
+  /** @deprecated 终端以「有无 window」判定，本字段被忽略（保留仅为旧调用不报错） */
   isH5?: boolean
   win?: any
   api: LoginApi

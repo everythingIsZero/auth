@@ -4,6 +4,27 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-11
+
+### Changed（破坏性：终端契约语义收敛）
+
+- **`LoginCaps` 字段改名，消除与 `@hxym18/env` 的同名不同义**：`isWechat` → `isWechatInApp`、`isMobile` → `isMobileBrowser`。
+  旧 `isWechat` 把「桌面微信 / 小程序 webview」也算微信内，与登录通道（移动微信内才走 OAuth 静默授权）同名不同义，
+  曾导致桌面微信跳门面 OAuth 死路。控制器只认新字段；误传旧字段时按 PC 兜底并在开发期告警一次。
+  **消费方须迁移**（nuantie 已迁）：用下一条的桥接函数，勿手写投影。
+- **`taroAdapter` / `createTaroLogin` 不再以 `isH5` 判端**：改为「有无 `window`」判定（H5 有、weapp 无）。
+  `isH5` 保留但被忽略（旧调用不报错）。删除一个消费方可手传错的终端位。
+
+### Added
+
+- **`loginCapsFromCapabilities(caps)`（`@hxym18/auth/core`）**：把 `@hxym18/env` 的 `capabilities()` 投影成
+  `{ isWechatInApp, isMobileBrowser }` 的**唯一桥接**（按结构类型取参，不依赖 env）。此前该投影由各站手写，
+  已发生漂移（auth 契约与 nuantie 实现相反）。
+
+### Fixed
+
+- 控制器对 `caps` 的终端判定对齐「移动微信」语义：桌面微信 / 小程序 webview 归 PC 通道（出二维码），不再进 OAuth。
+
 ## [0.6.1] - 2026-10-10
 
 ### Fixed

@@ -25,7 +25,7 @@ const IDLE = {
 
 /**
  * @param {{
- *   caps?: { isWechat?: boolean, isMobile?: boolean },
+ *   caps?: { isWechatInApp?: boolean, isMobileBrowser?: boolean },
  *   authOrigin?: string, cookieName?: string,
  *   adapter?: any, api?: any, fetchImpl?: typeof fetch,
  *   qrcodeUrl?: string, pollUrl?: string, verifyUrl?: string, configUrl?: string, devLoginUrl?: string,
@@ -35,8 +35,8 @@ const IDLE = {
  */
 export function useSsoLogin(opts) {
   const o = opts || {}
-  const isWx = !!(o.caps && o.caps.isWechat)
-  const isMobile = !!(o.caps && o.caps.isMobile)
+  const isWx = !!(o.caps && o.caps.isWechatInApp)
+  const isMobile = !!(o.caps && o.caps.isMobileBrowser)
   const [state, setState] = useState(() => ({
     ...IDLE,
     channel: isWx ? 'wechat' : isMobile ? 'mobile' : 'pc',
@@ -54,10 +54,11 @@ export function useSsoLogin(opts) {
     if (!adapter) return undefined
 
     let cancelled = false
-    // caps 由调用方用 @hxym18/env 计算后传入；漏传会默认成 PC（漏终端），开发期告警一次。
+    // caps 由调用方用 @hxym18/env 的 capabilities() 经 core 的 loginCapsFromCapabilities 投影后传入；
+    // 漏传会默认成 PC（漏终端），开发期告警一次。
     if (typeof window !== 'undefined' && !cur.caps && !warnedRef.current) {
       warnedRef.current = true
-      console.warn('[useSsoLogin] 未传 caps：将按 PC 处理；请用 @hxym18/env 的 capabilities() 计算后传入（否则微信内/手机会漏）')
+      console.warn('[useSsoLogin] 未传 caps：将按 PC 处理；请用 @hxym18/auth/core 的 loginCapsFromCapabilities(capabilities(...)) 投影后传入（否则微信内/手机会漏）')
     }
     const controller = createLoginController({
       authOrigin: cur.authOrigin,

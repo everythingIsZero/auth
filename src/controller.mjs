@@ -25,6 +25,25 @@ const DEFAULT_URLS = Object.freeze({
   devLogin: '/api/auth/dev-login',
 })
 
+/** 误传能力位只告警一次（模块级）：这是配置错误，不是每实例事件。 */
+let warnedLegacyCaps = false
+
+/**
+ * 把「误传 env 能力位」揪出来：消费方若把 `@hxym18/env` 的 `capabilities()` 整体透传，
+ * caps 里没有 isWechatInApp/isMobileBrowser，通道会静默退 PC（移动微信用户被给出二维码）。
+ * 命中旧键（isWechat/isMobile）时开发期告警一次，指向唯一桥接函数。
+ * @param {any} caps
+ */
+function warnLegacyCaps(caps) {
+  if (warnedLegacyCaps || !caps) return
+  if (caps.isWechatInApp !== undefined || caps.isMobileBrowser !== undefined) return
+  if (caps.isWechat === undefined && caps.isMobile === undefined) return
+  warnedLegacyCaps = true
+  console.warn(
+    '[auth/controller] caps 缺 isWechatInApp/isMobileBrowser（检测到 isWechat/isMobile——疑似直接透传 @hxym18/env 的 capabilities()）：将按 PC 处理。请改用 @hxym18/auth/core 的 loginCapsFromCapabilities(capabilities(...)) 桥接。'
+  )
+}
+
 /**
  * 造浏览器 fetch 版 api（站点同源相对路径）。Taro 侧请自备（Taro.request）。
  * @param {{ fetchImpl?: typeof fetch, qrcodeUrl?: string, pollUrl?: string, verifyUrl?: string, configUrl?: string, devLoginUrl?: string }} [opts]
@@ -97,7 +116,7 @@ export function createTaroApi(opts) {
  * @param {{
  *   adapter: { readCookie: (name: string) => string, currentUrl: () => string, replaceUrl: (url: string) => void, navigate: (url: string) => void, setTimeout: (fn: Function, ms: number) => any, clearTimeout: (id: any) => void },
  *   api: { config: Function, qrcode: Function, poll: Function, verify: Function, devLogin: Function },
- *   caps?: { isWechat?: boolean, isMobile?: boolean },
+ *   caps?: { isWechatInApp?: boolean, isMobileBrowser?: boolean },
  *   authOrigin?: string,
  *   cookieName?: string,
  *   pollIntervalMs?: number,
@@ -116,12 +135,15 @@ export function createLoginController(opts) {
   const authOrigin = (o.authOrigin || AUTH_ORIGIN).replace(/\/+$/, '')
   const cookieName = o.cookieName || SSO_TICKET_COOKIE
   const caps = o.caps || {}
+  warnLegacyCaps(caps)
   const pollIntervalMs = o.pollIntervalMs || 3000
   const retryIntervalMs = o.retryIntervalMs || 5000
   const onSuccess = o.onSuccess || (() => {})
   const onState = o.onState || (() => {})
 
-  const channel = caps.isWechat ? 'wechat' : caps.isMobile ? 'mobile' : 'pc'
+  // 通道位由消费方经 @hxym18/auth/core 的 loginCapsFromCapabilities(env.capabilities()) 注入。
+  // 不认 env 的 isWechat（它含桌面微信/小程序 webview）——那是历史坑，见 warnLegacyCaps。
+  const channel = caps.isWechatInApp ? 'wechat' : caps.isMobileBrowser ? 'mobile' : 'pc'
   let disposed = false
   let timer = null
   let scene = ''
@@ -359,14 +381,17 @@ export function browserAdapter(win) {
 }
 
 /**
- * Taro 适配。H5 端委托 window；小程序端（无全域 cookie / 网页跳转）保持惰性——
- * 读不到票根、不跳转、不抛错，登录由各小程序身份源自行处理。
- * （不需要 Taro 对象：H5 走 window；小程序端登录不经本层。）
- * @param {{ isH5?: boolean, win?: any }} [opts]
+ * Taro 适配。以「**有无 window**」判定终端——不再信任调用方传的 `isH5`
+ * （isH5 缺失或传错都会静默走错通道：H5 判假 → 登录动线全死；weapp 判真 → 拿浏览器 adapter 乱跑）。
+ *   有 window（H5）→ 委托 window（全域 cookie + 网页跳转），动线同 React 站。
+ *   无 window（weapp）→ 惰性：读不到票根、不跳转、不抛错，登录由各小程序身份源自行处理。
+ * （不需要 Taro 对象：有无 window 已足够区分；小程序端登录不经本层。）
+ * @param {{ win?: any, isH5?: boolean }} [opts] isH5 已废弃、被忽略（保留仅为旧调用不报错）
  */
 export function taroAdapter(opts) {
   const o = opts || {}
-  if (o.isH5) return browserAdapter(o.win || globalThis)
+  const win = o.win || (typeof globalThis !== 'undefined' ? globalThis.window : undefined)
+  if (win) return browserAdapter(o.win || globalThis)
   return {
     readCookie: () => '',
     currentUrl: () => '',

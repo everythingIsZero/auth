@@ -13,8 +13,8 @@ export { createTaroApi } from './controller.mjs'
 
 /**
  * @param {{
- *   Taro?: any, isH5?: boolean, win?: any,
- *   api: any, caps?: { isWechat?: boolean, isMobile?: boolean }, adapter?: any,
+ *   Taro?: any, win?: any,
+ *   api: any, caps?: { isWechatInApp?: boolean, isMobileBrowser?: boolean }, adapter?: any,
  *   authOrigin?: string, cookieName?: string,
  *   pollIntervalMs?: number, retryIntervalMs?: number,
  *   onSuccess?: (data: any) => void, onState?: (state: any) => void
@@ -25,7 +25,7 @@ export function createTaroLogin(opts) {
   if (!o.api) throw new TypeError('createTaroLogin: api is required（小程序/ Taro 用自备请求层）')
   return createLoginController({
     ...o,
-    adapter: o.adapter || taroAdapter({ isH5: !!o.isH5, win: o.win }),
+    adapter: o.adapter || taroAdapter({ win: o.win }),
   })
 }
 

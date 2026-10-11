@@ -60,7 +60,7 @@ test('ui：title 可覆盖', () => {
 })
 
 test('ui：SsoLoginModal 打开 → 覆盖层 + 关闭按钮 + 面板', () => {
-  const html = render(React.createElement(SsoLoginModal, { open: true, caps: { isWechat: true, isMobile: true } }))
+  const html = render(React.createElement(SsoLoginModal, { open: true, caps: { isWechatInApp: true, isMobileBrowser: true } }))
   assert.match(html, /aria-label="关闭"/)
   assert.match(html, /微信一键登录/)
 })

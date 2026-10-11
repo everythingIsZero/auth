@@ -148,3 +148,24 @@ export function profileFallback(profile) {
   const avatar = typeof p.avatar === 'string' && p.avatar ? p.avatar : ''
   return { nickname, avatar }
 }
+
+/**
+ * 登录通道能力位：把 `@hxym18/env` 的 `capabilities()` 投影成控制器认的通道位（**唯一桥接**）。
+ *
+ * 为什么需要它：env 的 `isWechat` 同时涵盖桌面微信与小程序 webview，而登录的「微信内」通道
+ * 只指能走 OAuth 静默授权的**移动微信**——两者同名不同义。若各站各自翻译必漂移
+ * （历史上桌面微信被误判进 wechat 通道，跳 OAuth 死路）。故投影只此一处，消费方一律调本函数。
+ *
+ * 按**结构类型**吃 env 的 Capabilities（不 import env），故 auth 无运行期依赖。
+ *
+ * @param {{ isWechatMobile?: boolean, isMobile?: boolean } | null | undefined} caps
+ *        `@hxym18/env` 的 `capabilities()` 返回值
+ * @returns {{ isWechatInApp: boolean, isMobileBrowser: boolean }}
+ */
+export function loginCapsFromCapabilities(caps) {
+  const c = caps || {}
+  return {
+    isWechatInApp: c.isWechatMobile === true,
+    isMobileBrowser: c.isMobile === true,
+  }
+}

@@ -9,6 +9,7 @@
 ## 出口
 
 > 出口面自 **v0.6.0** 起**稳定**；后续新增只 additive（新出口/可选配置），**不破坏已有站**。
+> 例外：**v0.7.0** 修正终端契约语义（`LoginCaps` 字段改名、`taroAdapter` 不再看 `isH5`）——见 `CHANGELOG.md`，迁移见下。
 
 | 出口 | 运行时 | 职责 |
 |---|---|---|
@@ -19,7 +20,7 @@
 | `@hxym18/auth/controller` | 全环境（零框架依赖） | 登录控制器：按端分流、SSO 跳转/回跳、PC 取码轮询、手机配对码、dev-login |
 | `@hxym18/auth/react` | 浏览器 + React | `useSsoLogin` 钩子（接线 + 状态订阅） |
 | `@hxym18/auth/taro` | Taro（H5/小程序） | `createTaroLogin` + `createTaroApi`（H5）；`createWeappLogin`（取 code）；`createWeappProfile`（资料采集）；小程序端 controller 惰性 |
-| `@hxym18/auth/core` | 浏览器/Edge | 同构常量与纯函数（票根名/格式、redirect 白名单、`buildAuthRedirect`、`profileFallback`） |
+| `@hxym18/auth/core` | 浏览器/Edge | 同构常量与纯函数（票根名/格式、redirect 白名单、`buildAuthRedirect`、`profileFallback`、`loginCapsFromCapabilities`） |
 | `@hxym18/auth`（`.`） | Node | `core` + `node` 聚合（含 `node:crypto`，勿在 Edge 引） |
 
 > **换框架不用重写**：登录逻辑只在 `server.mjs` 写一次（Web `Request`/`Response`）。换掉 Next/Hono 时，新框架只需几行适配（`c.req.raw` ↔ `Request`）；不属 Web 标准的框架（Express）用 `@hxym18/auth/server` + 一行 `dispatch`，登录逻辑零改动。
@@ -28,28 +29,34 @@
 ## 安装
 
 ```bash
-pnpm add github:everythingIsZero/auth#v0.6.1
+pnpm add github:everythingIsZero/auth#v0.7.0
 ```
 
-**能力位依赖**：控制器的 `caps` 建议由 [`@hxym18/env`](../env) 计算后注入（本包不自判 UA）：
+**能力位依赖**：控制器的 `caps` 由 [`@hxym18/env`](../env) 计算、经 `@hxym18/auth/core` 的
+`loginCapsFromCapabilities()` 投影后注入（本包不自判 UA，也不读 env 的运行期依赖）：
 
 ```bash
 pnpm add github:everythingIsZero/env#v0.1.1
 ```
+
+> **为什么必须走 `loginCapsFromCapabilities`**：env 的 `isWechat` 涵盖桌面微信 / 小程序 webview，
+> 而登录「微信内」通道只指能走 OAuth 静默授权的**移动微信**——同名不同义，整体透传会把桌面微信
+> 送进 OAuth 死路。投影只此一处，各站勿手写。
 
 ## 客户端接入（React / Next 客户端组件）
 
 ```jsx
 'use client'
 import { capabilities } from '@hxym18/env'
+import { loginCapsFromCapabilities } from '@hxym18/auth/core'
 import { useSsoLogin } from '@hxym18/auth/react'
 
 export function LoginPanel() {
   const { state, startSso, refresh, devLogin } = useSsoLogin({
-    caps: capabilities({
+    caps: loginCapsFromCapabilities(capabilities({
       ua: navigator.userAgent,
       maxTouchPoints: navigator.maxTouchPoints,
-    }),
+    })),
   })
 
   if (state.channel === 'wechat')
@@ -65,7 +72,7 @@ export function LoginPanel() {
 `state` 形态：`{ channel: 'wechat'|'mobile'|'pc', status: 'idle'|'waiting'|'pending'|'ok'|'error'|'verifying', qrUrl, pairCode, error, wxEnabled, devLogin, user }`（`user` 默认含 `id / displayName / avatar`）。
 
 - 挂载即消费 `?sso=return` 回跳；非微信内自动出码轮询。
-- **`caps` 用 `@hxym18/env` 的 `capabilities()` 计算后传入**（微信内/手机/PC 分流依据）；漏传会按 PC 处理并在开发期 `console.warn` 一次。
+- **`caps` 用 `@hxym18/env` 的 `capabilities()` 经 `@hxym18/auth/core` 的 `loginCapsFromCapabilities()` 投影后传入**（微信内/手机/PC 分流依据）；漏传会按 PC 处理并在开发期 `console.warn` 一次。
 - 状态枚举与服务端契约一致：`waiting | pending（已扫码待确认）| ok | expired（自动换码）`。
 
 ## 服务端接入（框架无关核心 + 薄适配）
@@ -101,20 +108,23 @@ export function LoginPanel() {
 ```js
 import Taro from '@tarojs/taro'
 import { capabilities } from '@hxym18/env'
+import { loginCapsFromCapabilities } from '@hxym18/auth/core'
 import { createTaroLogin, createTaroApi } from '@hxym18/auth/taro'
 
-const isH5 = process.env.TARO_ENV === 'h5'
 const login = createTaroLogin({
-  isH5,
-  caps: capabilities({ ua: navigator.userAgent, maxTouchPoints: navigator.maxTouchPoints }),
+  // 终端由「有无 window」判定，无需手传 isH5
+  caps: loginCapsFromCapabilities(capabilities({
+    ua: (typeof navigator !== 'undefined' && navigator.userAgent) || '',
+    maxTouchPoints: (typeof navigator !== 'undefined' && navigator.maxTouchPoints) || 0,
+  })),
   // 小程序无标准 fetch：createTaroApi 注入 Taro.request，不必手写 5 个端点
   api: createTaroApi({ request: (opts) => Taro.request(opts) }),
 })
 ```
 
 - `createTaroApi({ request })`：`request` 收 `{ url, method, header, data }`、返 `{ statusCode, data }`（即 `Taro.request` 形状），与 `createFetchApi` 对齐。
-- **H5 端**：动线同 React 站（出码轮询 / 跳门面回跳）。
-- **小程序端（`isH5 !== true`）**：controller 惰性——读不到全域 cookie、不跳转、不抛错；登录走小程序身份源：
+- **H5 端**：动线同 React 站（出码轮询 / 跳门面回跳）。终端由「有无 `window`」判定，不必手传 `isH5`。
+- **小程序端（无 `window`）**：controller 惰性——读不到全域 cookie、不跳转、不抛错；登录走小程序身份源：
   ```js
   import Taro from '@tarojs/taro'
   import { createWeappLogin } from '@hxym18/auth/taro'
@@ -133,10 +143,11 @@ const login = createTaroLogin({
 
 ```jsx
 'use client'
-import { SsoLoginModal } from '@hxym18/auth/ui'
 import { capabilities } from '@hxym18/env'
+import { loginCapsFromCapabilities } from '@hxym18/auth/core'
+import { SsoLoginModal } from '@hxym18/auth/ui'
 
-const caps = capabilities({ ua: navigator.userAgent, maxTouchPoints: navigator.maxTouchPoints })
+const caps = loginCapsFromCapabilities(capabilities({ ua: navigator.userAgent, maxTouchPoints: navigator.maxTouchPoints }))
 
 <SsoLoginModal open={open} onClose={() => setOpen(false)} caps={caps} onSuccess={() => location.reload()} />
 ```

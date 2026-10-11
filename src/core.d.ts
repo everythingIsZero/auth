@@ -61,3 +61,12 @@ export declare function profileFallback(profile?: {
   nickname?: string | null
   avatar?: string | null
 }): { nickname: string; avatar: string }
+
+/**
+ * 登录通道能力位：`@hxym18/env` 的 `capabilities()` → 控制器认的 `{ isWechatInApp, isMobileBrowser }`。
+ * 唯一桥接（消费方勿手写）；按结构类型取参，故不依赖 env。
+ */
+export declare function loginCapsFromCapabilities(caps?: {
+  isWechatMobile?: boolean
+  isMobile?: boolean
+} | null): { isWechatInApp: boolean; isMobileBrowser: boolean }

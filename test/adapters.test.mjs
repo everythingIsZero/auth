@@ -1,7 +1,7 @@
 /**
  * adapters.test.mjs — 平台适配层（node:test）
- * browserAdapter 把 window 归一成控制器需要的 adapter；taroAdapter 在非 H5 端保持惰性
- * （weapp 无全域 cookie/网页跳转，登录走各自身份源），不报错、不空转。
+ * browserAdapter 把 window 归一成控制器需要的 adapter；taroAdapter 以「有无 window」判定
+ * （weapp 无 window → 惰性：无全域 cookie/网页跳转，登录走各自身份源），不报错、不空转。
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -52,17 +52,23 @@ test('browserAdapter：定时器转发到宿主', () => {
   assert.equal(w._cleared, 7)
 })
 
-test('taroAdapter：非 H5（weapp）惰性——读不到 cookie、不跳转、不抛错', () => {
-  const a = taroAdapter({ isH5: false })
+test('taroAdapter：无 window（weapp）惰性——读不到 cookie、不跳转、不抛错', () => {
+  const a = taroAdapter({})
   assert.equal(a.readCookie('sl_web_session'), '')
   assert.equal(a.currentUrl(), '')
   assert.doesNotThrow(() => a.navigate('https://auth.hxym18.com/'))
   assert.doesNotThrow(() => a.replaceUrl('https://nt.hxym18.com/'))
 })
 
-test('taroAdapter：H5 端委托给 window（复用 browserAdapter 语义）', () => {
+test('taroAdapter：isH5 不再是判据——传 isH5:true 但无 window 仍惰性', () => {
+  const a = taroAdapter({ isH5: true })
+  assert.equal(a.readCookie('sl_web_session'), '')
+  assert.equal(a.currentUrl(), '')
+})
+
+test('taroAdapter：有 window 委托给 browserAdapter（复用其语义）', () => {
   const w = fakeWin()
-  const a = taroAdapter({ isH5: true, win: w })
+  const a = taroAdapter({ win: w })
   assert.equal(a.readCookie('sl_web_session'), 'b'.repeat(48))
   assert.equal(a.currentUrl(), 'https://ka.hxym18.com/?a=1')
   a.navigate('https://auth.hxym18.com/')

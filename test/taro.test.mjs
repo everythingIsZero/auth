@@ -16,16 +16,16 @@ const NOOP_API = {
 }
 
 test('createTaroLogin：缺 api 抛错（小程序无标准 fetch，须自备）', () => {
-  assert.throws(() => createTaroLogin({ isH5: true }), /api is required/)
+  assert.throws(() => createTaroLogin({}), /api is required/)
 })
 
-test('createTaroLogin：非 H5（weapp）adapter 惰性——startSso 不抛、不跳', () => {
-  const c = createTaroLogin({ isH5: false, caps: { isWechat: false, isMobile: true }, api: NOOP_API })
+test('createTaroLogin：无 window（weapp）adapter 惰性——startSso 不抛、不跳', () => {
+  const c = createTaroLogin({ caps: { isWechatInApp: false, isMobileBrowser: true }, api: NOOP_API })
   assert.equal(c.getState().channel, 'mobile')
   assert.doesNotThrow(() => c.startSso())
 })
 
-test('createTaroLogin：H5 委托 window，startSso 跳到门面', () => {
+test('createTaroLogin：有 window 委托 browserAdapter，startSso 跳到门面（不看 isH5）', () => {
   const win = {
     location: { href: 'https://nt.hxym18.com/' },
     document: { cookie: 'sl_web_session=' + 'b'.repeat(48) },
@@ -33,7 +33,8 @@ test('createTaroLogin：H5 委托 window，startSso 跳到门面', () => {
     setTimeout,
     clearTimeout,
   }
-  const c = createTaroLogin({ isH5: true, win, authOrigin: 'https://auth.hxym18.com', caps: { isWechat: true, isMobile: true }, api: NOOP_API })
+  // 显式传 isH5:false 也应以 window 为准——isH5 不再是终端判据
+  const c = createTaroLogin({ isH5: false, win, authOrigin: 'https://auth.hxym18.com', caps: { isWechatInApp: true, isMobileBrowser: true }, api: NOOP_API })
   c.startSso()
   assert.match(win.location.href, /^https:\/\/auth\.hxym18\.com\/\?redirect=/)
 })
@@ -81,7 +82,7 @@ test('createTaroLogin：接 createTaroApi 后 H5 start 会取码（端到端接�
     setTimeout,
     clearTimeout,
   }
-  const c = createTaroLogin({ isH5: true, win, caps: { isWechat: false, isMobile: false }, api })
+  const c = createTaroLogin({ win, caps: { isWechatInApp: false, isMobileBrowser: false }, api })
   await c.start()
   assert.ok(seen.some((o) => o.url.includes('wx-qrcode')), '应请求取码端点')
   c.dispose()

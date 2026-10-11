@@ -5,6 +5,7 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { loginCapsFromCapabilities } from '../src/core.mjs'
 
 import {
   SSO_TICKET_COOKIE,
@@ -132,6 +133,30 @@ test('buildAuthRedirect：opts 可覆写 origin / fallback', () => {
     fallback: 'https://ka.hxym18.com/',
   })
   assert.equal(out, 'https://auth.test/?redirect=' + encodeURIComponent('https://ka.hxym18.com/'))
+})
+
+test('loginCapsFromCapabilities：@hxym18/env 能力位 → 登录通道位（唯一桥接）', () => {
+  // 移动微信：isWechatMobile 真 → wechat 通道
+  assert.deepEqual(
+    loginCapsFromCapabilities({ isWechat: true, isWechatMobile: true, isMobile: true }),
+    { isWechatInApp: true, isMobileBrowser: true }
+  )
+  // 桌面微信：isWechat 真但 isWechatMobile 假 → 不得判 wechat（OAuth 死路）
+  assert.deepEqual(
+    loginCapsFromCapabilities({ isWechat: true, isDesktopWechat: true, isWechatMobile: false, isMobile: false }),
+    { isWechatInApp: false, isMobileBrowser: false }
+  )
+  // 小程序 webview：isWechat 真但非移动微信 → 不当 wechat 通道
+  assert.deepEqual(
+    loginCapsFromCapabilities({ isWechat: true, isMiniprogram: true, isMobile: true }),
+    { isWechatInApp: false, isMobileBrowser: true }
+  )
+  // 手机浏览器 / 桌面浏览器
+  assert.deepEqual(loginCapsFromCapabilities({ isMobile: true }), { isWechatInApp: false, isMobileBrowser: true })
+  assert.deepEqual(loginCapsFromCapabilities({ isMobile: false }), { isWechatInApp: false, isMobileBrowser: false })
+  // 缺省（漏传信号）：全 false → PC 兜底，不抛
+  assert.deepEqual(loginCapsFromCapabilities(undefined), { isWechatInApp: false, isMobileBrowser: false })
+  assert.deepEqual(loginCapsFromCapabilities({}), { isWechatInApp: false, isMobileBrowser: false })
 })
 
 test('index 出口聚合 core + node（node 层函数已挂载）', () => {
