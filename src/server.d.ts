@@ -64,6 +64,12 @@ export type AuthRoutesConfig = {
      * 与续期侧 `renewSession` 的 `secure` 同一口径。
      */
     secure?: boolean
+    /**
+     * **迁移期** legacy 会话 cookie 名（站点声明，如 `['wi_session']`）：`logout` 时**一并清**。
+     * 站点私有的过渡 cookie 不该由共享包猜、也不该让每站复制一层 `[action]` 路由（与 `onFirstLogin` 对称的扩展点）。
+     * 与统一会话同名者自动忽略；清 cookie 头与签发侧同 Path/HttpOnly/SameSite，`Secure` 随环境同口径。
+     */
+    legacyCookies?: string[]
   }
   /** 锚定器类型；缺省 'identity' */
   anchor?: 'identity' | 'allowlist' | 'first-login'
@@ -86,6 +92,12 @@ export type AuthRoutesConfig = {
     openid: string
     unionid: string | null
   }) => Promise<void> | void
+  /**
+   * 登出钩子（扩展点）：返回额外的 `Set-Cookie` 头数组（原样追加到 `logout` 响应）。
+   * 典型用途：迁移期旧会话要销本站 `sessions` 行——在 `ctx.req` 上读旧 cookie 再删。
+   * 钩子异常**降级，不阻塞登出**（统一会话 cookie 已清）。`session.legacyCookies` 是它的声明式简写。
+   */
+  onLogout?: (ctx: { req?: Request }) => Promise<string[] | void> | string[] | void
   /** 登录后按 uid 读回本站资料（昵称/头像）——weapp 端借此继承 H5 资料 */
   loadProfile?: (
     uid: string,

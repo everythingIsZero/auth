@@ -42,7 +42,7 @@ export function createHonoAuthRoutes(config) {
     wxQrcode: () => core.wxQrcode(),
     wxPoll: (c) => core.wxPoll(c.req.raw),
     weappVerify: (c) => core.weappVerify(c.req.raw),
-    logout: () => core.logout(),
+    logout: (c) => core.logout(c && c.req ? c.req.raw : undefined),
     wxConfigured: () => core.wxConfigured(),
     /** 通配分发：`app.all('/api/auth/*', (c) => auth.dispatch(c))`（**末位注册**） */
     dispatch: (c) => core.dispatch(c.req.raw),

@@ -165,6 +165,22 @@ export function createAuthServer(config) {
   // 门面/小程序配置**按请求**解析（不装配期冻结），与 session.secret 口径一致。
   const confOf = () => authServerConf(cfg.authServer, envGet)
   const resolveIdentity = cfg.resolveIdentity || null
+
+  /**
+   * 迁移期 legacy 会话 cookie 名（站点**声明**，如 `['wi_session']`）：登出时一并清。
+   * 站点私有的过渡 cookie（名字/是否销 DB 行各站不同）不该由共享包猜，也不该让每站复制一层路由。
+   */
+  const legacyCookies = Array.isArray(session.legacyCookies)
+    ? session.legacyCookies.filter((n) => typeof n === 'string' && n.trim() && n !== cookieName)
+    : []
+  /**
+   * 站点登出钩子（扩展点，与 `onFirstLogin` 对称）：返回额外的 `Set-Cookie` 头数组（原样追加）。
+   * 典型用途：迁称期旧会话要销本站 `sessions` 行——`onLogout(ctx)` 里读 `ctx.req` 的旧 cookie 再删。
+   */
+  const onLogout = typeof cfg.onLogout === 'function' ? cfg.onLogout : null
+  /** 清 cookie 头：Path/HttpOnly/SameSite/Secure 与签发侧同口径（浏览器按名字+Path+Domain 匹配，Secure 仅随环境） */
+  const clearCookie = (name) =>
+    `${name}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${resolveSessionSecure(envGet, session.secure) ? '; Secure' : ''}`
   /**
    * 非 allowlist 锚定必须提供 `resolveIdentity`：否则 uid 会退化为 openid，
    * 违反「openid 不作公开 id（除 allowlist）」（S6）。allowlist 站可省——uid 即白名单 openid。
@@ -374,9 +390,30 @@ export function createAuthServer(config) {
   }
 
   /* ---------------- 登出 ---------------- */
-  async function handleLogout() {
+
+  /**
+   * 登出：清统一会话 cookie；**迁移期**额外清站点声明的 legacy cookie（`session.legacyCookies`）
+   * 并调用站点 `onLogout(ctx)` 钩子（返回的 Set-Cookie 头原样追加）。
+   *
+   * 为什么是扩展点而不是每站包一层 `[action]`：legacy cookie（`wi_session`/`fang_session` 等）
+   * 是**站点私有**的过渡产物（名字与是否需要销 DB 行各站不同），共享包无从知道；把它做成声明 + 钩子
+   * 后，站点只声明，不再复制「包一层只对 logout 追加 Set-Cookie」的路由代码。
+   */
+  async function handleLogout(req) {
     const res = json({ ok: true })
-    res.headers.append('set-cookie', `${cookieName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`)
+    res.headers.append('set-cookie', clearCookie(cookieName))
+    // 迁移期 legacy cookie：声明即清（同一 Path=/；Secure 与统一会话同口径）
+    for (const name of legacyCookies) res.headers.append('set-cookie', clearCookie(name))
+    if (onLogout) {
+      try {
+        const extra = await onLogout({ req })
+        for (const header of Array.isArray(extra) ? extra : []) {
+          if (typeof header === 'string' && header) res.headers.append('set-cookie', header)
+        }
+      } catch {
+        // 钩子失败不阻断登出：统一会话 cookie 已清（浏览器侧已登出）；站点侧残留按站点自行告警
+      }
+    }
     return res
   }
 
@@ -437,7 +474,7 @@ export function createAuthServer(config) {
     wxQrcode: handleWxQrcode,
     wxPoll: handleWxPoll,
     weappVerify: handleWeappVerify,
-    logout: handleLogout,
+    logout: (req) => handleLogout(req),
     /** GET /api/auth/config：能力探测（`{ ok:true, wxEnabled, devLogin }`） */
     config: handleConfig,
     /** POST /api/auth/dev-login：开发旁路登录（三重门全开才 200，否则 404） */
@@ -459,7 +496,7 @@ export function createAuthServer(config) {
       if (action === 'wx-qrcode' && method === 'GET') return handleWxQrcode()
       if (action === 'wx-poll' && method === 'GET') return handleWxPoll(req)
       if (action === 'weapp' && method === 'POST') return handleWeappVerify(req)
-      if (action === 'logout' && method === 'POST') return handleLogout()
+      if (action === 'logout' && method === 'POST') return handleLogout(req)
       return json({ ok: false, error: 'not_found' }, 404)
     },
   }

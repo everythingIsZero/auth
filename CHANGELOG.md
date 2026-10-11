@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+## [Unreleased]
+
+## [0.10.0] - 2026-10-11
+
+### Added
+
+- **登出扩展点（迁移期旧会话统一收口）**：`session.legacyCookies: string[]`（声明式——`logout` 时一并清站点私有旧 cookie，同 `Path`/`HttpOnly`/`SameSite`，`Secure` 随环境；与统一会话同名者自动忽略）与 `onLogout(ctx)` 钩子（返回 `string[]` 的额外 `Set-Cookie` 头原样追加；`ctx.req` 为原始 `Request`，供销本站旧会话 DB 行）。**与 `onFirstLogin` 对称**：站点只声明，不再复制「在 `[action]` 里包一层、只对 logout 追加清 cookie」的路由代码（此前 wordinput 的迁移期 shim 即为该重复）。`onLogout` **异常降级，不阻塞登出**。
+- `logout` 的公开签名改为 `logout(req?)`（`createAuthServer` 的 `dispatch` 与 Hono 适配均透传 `req`；不传时行为不变）。
+
 ## [0.9.0] - 2026-10-11
 
 含**行为变更**（会话 cookie `Secure` 口径）：不再依赖 `NODE_ENV` 推断——本地 http 开发须显式 `session.secure: false`。

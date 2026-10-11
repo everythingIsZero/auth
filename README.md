@@ -158,6 +158,31 @@ createAuthServer({
 - **异常降级**：`onFirstLogin` 抛错**不阻塞登录**（登录照常签发会话）。
 - `anchor:'first-login'` 要求提供 `onFirstLogin`，**缺则装配抛 `TypeError`**；其锚定语义同 `identity`（先到先得）。
 
+### 登出与迁移期旧会话（扩展点）
+
+core 的 `logout` 只清**统一会话**（`app_session`）。迁移期站点往往还有**自己的旧 cookie**（如 `wi_session` / `fang_session`，甚至带一张 `sessions` 表），共享包无从知道——**站点只声明，不要复制一层 `[action]` 路由**：
+
+```ts
+createAuthRoutes({
+  session: {
+    secret: sessionSecret,
+    legacyCookies: ['fang_session'],          // 登出时一并清（与统一会话同 Path/HttpOnly/SameSite，Secure 随环境）
+  },
+  // 旧会话还要销本站 DB 行时用钩子（与 onFirstLogin 对称）；返回的 Set-Cookie 原样追加
+  onLogout: async ({ req }) => {
+    const legacy = req?.headers.get('cookie')?.match(/fang_session=([^;]+)/)?.[1]
+    if (legacy) await destroyLegacySession(legacy)
+    return []                                  // 需要额外清 cookie 时返回完整 Set-Cookie 字符串数组
+  },
+  resolveIdentity,
+})
+```
+
+- `legacyCookies`：声明式简写；与统一会话同名者自动忽略，空串忽略。
+- `onLogout(ctx)`：`ctx.req` 是原始 `Request`（要读旧 cookie 值就靠它）；返回 `string[]`（完整 `Set-Cookie` 头）。
+- **异常降级**：`onLogout` 抛错**不阻塞登出**（统一会话 cookie 已清，浏览器侧已登出）；站点侧残留自行告警。
+- 迁移期结束、旧会话退场后，删掉声明与钩子即可（不留半接入路由）。
+
 ### 微信小程序（weapp）
 
 核心**已内置** `POST /api/auth/weapp`（`weappVerify`）：`Taro.login` code → `jscode2session` → **同一个 `resolveIdentity`** → 签 token（weapp 无 cookie）。站点**无需自写锚定/换码**。

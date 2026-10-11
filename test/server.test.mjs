@@ -412,3 +412,63 @@ test('allowlist 站可省 resolveIdentity（uid 即白名单 openid）', async (
   assert.equal(r.status, 200)
   assert.equal((await r.json()).user.id, 'owner-openid-0001')
 })
+
+test('logout：session.legacyCookies 声明的旧 cookie 一并清（迁移期扩展点，站点不再包一层路由）', async () => {
+  const routes = createAuthServer({
+    session: { secret: 's'.repeat(32), legacyCookies: ['fang_session', 'app_session', ''] },
+    resolveIdentity: () => ({ uid: 'user-00000001' }),
+  })
+  const res = await routes.logout()
+  assert.equal(res.status, 200)
+  const cookies = res.headers.getSetCookie().map(String)
+  assert.ok(
+    cookies.some((c) => c.startsWith('app_session=;') && c.includes('Max-Age=0')),
+    `统一会话应被清：${cookies.join(' | ')}`,
+  )
+  assert.ok(
+    cookies.some((c) => c.startsWith('fang_session=;') && c.includes('Path=/') && c.includes('HttpOnly')),
+    `legacy cookie 应被清：${cookies.join(' | ')}`,
+  )
+  // 与统一会话同名 / 空串：不得重复清（去重靠 cookieName 过滤）
+  assert.equal(cookies.filter((c) => c.startsWith('app_session=;')).length, 1)
+  assert.equal(cookies.filter((c) => c.startsWith('=;')).length, 0)
+})
+
+test('logout：未声明 legacyCookies 时行为不变（只清统一会话）', async () => {
+  const routes = createAuthServer({
+    session: { secret: 's'.repeat(32) },
+    resolveIdentity: () => ({ uid: 'user-00000001' }),
+  })
+  const res = await routes.logout()
+  const cookies = res.headers.getSetCookie().map(String)
+  assert.equal(cookies.length, 1, `只应有一条 Set-Cookie：${cookies.join(' | ')}`)
+  assert.ok(cookies[0].startsWith('app_session=;'))
+})
+
+test('logout：onLogout(ctx) 收到 req、追加返回的 Set-Cookie，异常不阻断登出', async () => {
+  const seen = []
+  const routes = createAuthServer({
+    session: { secret: 's'.repeat(32) },
+    resolveIdentity: () => ({ uid: 'user-00000001' }),
+    onLogout: (ctx) => {
+      seen.push(Boolean(ctx && ctx.req && ctx.req.headers))
+      return ['legacy_row=cleared; Path=/; Max-Age=0']
+    },
+  })
+  const res = await routes.logout(new Request('https://x/api/auth/logout', { method: 'POST', headers: { cookie: 'fang_session=abc' } }))
+  assert.deepEqual(seen, [true], 'onLogout 必须拿到带 headers 的 req（站点要读旧 cookie 值）')
+  const cookies = res.headers.getSetCookie().map(String)
+  assert.ok(cookies.includes('legacy_row=cleared; Path=/; Max-Age=0'), cookies.join(' | '))
+  assert.ok(cookies.some((c) => c.startsWith('app_session=;')))
+
+  const boom = createAuthServer({
+    session: { secret: 's'.repeat(32) },
+    resolveIdentity: () => ({ uid: 'user-00000001' }),
+    onLogout: () => {
+      throw new Error('db down')
+    },
+  })
+  const res2 = await boom.logout()
+  assert.equal(res2.status, 200, '钩子异常不得把登出打成 5xx')
+  assert.ok(res2.headers.getSetCookie().some((c) => String(c).startsWith('app_session=;')))
+})
