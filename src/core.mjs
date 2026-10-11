@@ -117,6 +117,17 @@ export const AUTH_ORIGIN = 'https://auth.hxym18.com'
 /** CloudBase 环境 ID（auth 站换取会话所用云环境；单源 deploy/auth/index.html CLOUD_ENV） */
 export const CLOUD_ENV_ID = 'cloud1-5gmlb2qmf0f1963b'
 
+/**
+ * 敏感前缀**契约常量**（供跨包门禁核对，非运行期行为）。
+ *
+ * auth 自身所有响应已 `no-store`（会话/票根等绝不可缓存），故此常量不驱动 auth 运行期逻辑；
+ * 它存在的唯一目的是给 workspace `scripts/e2e/prefix-consistency.test.mjs` 提供**可 import 的单一来源**，
+ * 与 pwa-kit `SENSITIVE_PREFIXES`、analytics `DEFAULT_DENY_PREFIXES` 集合相等。
+ *
+ * **不得少于必需项**（`/s/` `/r/` `/api/`）：只能加不能减。改动须四方同步，否则 harness 即红。
+ */
+export const SENSITIVE_PREFIXES = Object.freeze(['/s/', '/r/', '/api/'])
+
 /** 无/非法 redirect 时的兜底落点（单源 deploy/auth/index.html DEFAULT_REDIRECT；旧 sl.hxym18.com 已随项目退役） */
 export const DEFAULT_REDIRECT = 'https://hxym18.com/'
 

@@ -54,6 +54,12 @@ export declare const AUTH_ORIGIN: string
 /** CloudBase 环境 ID（auth 站云环境；'cloud1-5gmlb2qmf0f1963b'） */
 export declare const CLOUD_ENV_ID: string
 
+/**
+ * 敏感前缀契约常量（`/s/` `/r/` `/api/`；供跨包门禁核对，不驱动 auth 运行期）。
+ * 与 pwa-kit `SENSITIVE_PREFIXES`、analytics `DEFAULT_DENY_PREFIXES` 集合相等；不得少于必需项。
+ */
+export declare const SENSITIVE_PREFIXES: readonly string[]
+
 /** 无/非法 redirect 时的兜底落点（'https://hxym18.com/'） */
 export declare const DEFAULT_REDIRECT: string
 
