@@ -90,6 +90,10 @@ export function LoginPanel() {
 - `token`：响应带 `{ token }`、不设 cookie——供 **Bearer 到处用**的站（Taro/Hono token 模型）。
 - `both`：两者都给。
 
+> **`deliver:'both'` 的 body token 风险**：`both` 把**同一份**签名会话值同时写进 httpOnly cookie 与响应 JSON（`src/server.mjs:269-273`，两处同值，均来自 `issueSession`，`src/server.mjs:233`）。body 里的 token **不受 `HttpOnly` 保护**：页面任意 JS（含第三方脚本 / 埋点 SDK）、服务端与反代的访问日志、APM 都能读到它——暴露面大于 httpOnly cookie，`HttpOnly` 的防护意义被抵消。响应已带 `Cache-Control: no-store`（`src/server.mjs:29`），缓存/中介存储风险受控；只有在站点把 token 再写进 URL 或 localStorage 时，才进一步进入浏览器历史/持久存储（属站点行为，非本包）。
+> - **适用**：同一站既有浏览器 cookie 会话、又需把 token 交给非 cookie 客户端（如 Taro/小程序复用同一登录响应）。
+> - **不适用**：纯浏览器站（用 `deliver:'cookie'`，回 token 无收益只增暴露）；纯 Bearer 站（用 `deliver:'token'`，不设 cookie）。
+
 验证侧用 `@hxym18/auth/node` 的 `readSession(value, { secret, ttlSec })`（cookie 值 / Bearer token 通用；`now > iat + ttlSec` 判**绝对过期**，`ttlSec` 缺省 48h），或直接用 `getSession(req, { secret, cookieName, ttlSec })`（读 cookie 或 `Bearer` → `{ uid, iat } | null`）。
 
 **会话续期 `renewSession(req, { secret, ttlSec, cookieName })`**（`@hxym18/auth/node`）：读请求会话（cookie 或 `Bearer`），**未过期但已过续期点**（`renewIfStale`）→ 返带 `Set-Cookie` 的 `Response`，否则 `null`。**续期回写仅 Node 运行时可用；Edge middleware 不可续期**（重签依赖 `node:crypto`）——Edge 站把续期落到 Node 端点（Route Handler / Server Action / Node middleware）。纯判定 `renewIfStale(iat, { ttlSec, halfLife })` 在同构层 `@hxym18/auth/core`（零 `node:crypto`，Edge 可载）。
@@ -108,6 +112,12 @@ export function LoginPanel() {
 > // 中间件读侧：同传 session.ttlSec
 > const who = getSession(req, { secret: session.secret, cookieName: session.cookieName, ttlSec: session.ttlSec })
 > ```
+
+**会话 cookie 硬化**：`Set-Cookie` 固定 `Path=/; HttpOnly; SameSite=Lax` 且**不设 `Domain`**（host-only；`src/server.mjs:34-36`，读侧自持同款 `src/node.mjs:219-221`）；`Secure` 由 `NODE_ENV === 'production'` 判定（`src/server.mjs:272`；`renewSession` 读侧同口径 `src/node.mjs:253-254`），非生产（含本地 http）不带 `Secure`。
+
+> **`__Host-` 前缀评估结论：暂不采用。** `__Host-` 要求 `Secure` + `Path=/` + **无 `Domain`**（限单一 host、不可跨子域共享）。本包会话 cookie 现已满足 `Path=/` + 无 `Domain`，就属性而言**兼容** `__Host-`；**跨子域共享不落在本 cookie 上**——承担跨子域的是 SSO 票根 `sl_web_session`（`domain=.hxym18.com`、非 HttpOnly，属 sso-bridge/auth 站，见 `../nuantie/docs/HANDOFF-2026-10-08-web-alignment-h5-auth.md:62`），故「多站共享登录」不构成否决 `__Host-` 的理由。不采用的真实原因是**改动成本**：① 改名 `app_session` → `__Host-app_session` 是**破坏性**——现存会话全部失效，且所有读侧（`getSession` / `renewSession` / 站点中间件）与配置须同步换名；② `__Host-` 强制 `Secure`，而当前签发按 `NODE_ENV` 决定 `Secure`（`src/server.mjs:272`），本地 http 开发会被浏览器拒绝该 cookie。其收益是防「兄弟子域写入域 cookie 冒充本 host 会话」（与残余风险 R44 同源，`../../knowledge/integration/pitfalls.md:114`）。**登记为后续独立硬化事项**：待会话改名走 major 版本、生产恒带 `Secure` 且本地开发例外规则确定后，再一并评估。
+
+> **会话吊销评估结论：登记为后续独立事项。** 会话是无状态 HMAC 自包含值（`v1.<uid>.<iat>.<sig>`，`src/node.mjs:185-194`），服务端**无会话表、无吊销名单**；签发/验签只做 HMAC 与形态校验，登出仅清 cookie（`src/server.mjs:372-376`），旧签名值仍验签通过。**窗口限制**：`readSession` 强制绝对过期，`now > iat + ttlSec` 即失效（`src/node.mjs:214`；`ttlSec` 缺省 48h，`src/core.mjs:34`）——被窃的**未续期** token 最多再用 `ttlSec`。但 `renewSession` 重签会**重置 `iat`**（`src/node.mjs:252`），续期只要求「未过绝对过期 + 已达续期点」（`renewIfStale`，`src/core.mjs:74-84`），**当前无总寿命 / 续期次数上限**：活跃持有者（含窃取者，只要能打到 Node 续期端点）可**无限滑动**——绝对过期是相对最后一次签发，不是「首次登录起算」的硬上限。**结论**：本批不引入吊销（现状无每请求存储，且无吊销需求）。后续若要，两条独立路径：**版本化密钥**（更换 `SESSION_SECRET`/版本前缀使旧签名整体失效，代价=全员重登）或**吊销名单**（记 uid/iat 阻止特定会话，代价=每请求查询或引入存储）——均属独立设计，不在现有契约内。
 
 
 **资料读回 `loadProfile(uid)`**（可选）：登录后按 uid 读本站已存资料（昵称/头像）——`resolveIdentity` 未给的字段用它补齐，weapp 端借此**继承 H5 昵称/头像**。故障降级，不阻塞登录。

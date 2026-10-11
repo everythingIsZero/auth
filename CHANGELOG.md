@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Docs
+
+- README 补 S6 文档义务（纯文档，无行为变更）：`session.deliver:'both'` 的 body token 暴露风险与适用/不适用场景；`__Host-` cookie 前缀**评估结论：暂不采用**（`app_session` 已 host-only、兼容，但改名破坏性 + 强制 Secure 打断本地 http 开发）；token 吊销**登记为后续独立事项**（无状态 HMAC 无吊销名单，绝对过期只相对最后签发，续期会重置 `iat` 且无总寿命上限）。
+
 ## [0.8.0] - 2026-10-11
 
 ### Added
