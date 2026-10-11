@@ -102,6 +102,10 @@ export function LoginPanel() {
 - `token`：响应带 `{ token }`、不设 cookie——供 **Bearer 到处用**的站（Taro/Hono token 模型）。
 - `both`：两者都给。
 
+> **私有前缀响应必须 `no-store`（S2 反向义务）**：`/s/`、`/r/`、`/api/` 等私有/敏感前缀的响应一律不得被缓存。本包所有响应（票根、会话、门面回包）固定 `Cache-Control: no-store`（`src/server.mjs:29`，含 `config`/`dev-login`/`sso-verify`/`wx-*`/`weapp`/`logout` 全部端点）；站点自有的私有前缀响应也须自标 `no-store`——SW 读不到 `Cookie`/`Set-Cookie`（forbidden header），防线只能靠响应头。
+
+> **能力位投影（与 `capability-projection` 契约一致）**：`caps` 只经 `loginCapsFromCapabilities()` 投影，返回 `isWechatInApp`（← env `isWechatMobile`）与 `isMobileBrowser`（← env `isMobile`）两键；本包不读 UA、不依赖 env 运行期。
+
 > **`deliver:'both'` 的 body token 风险**：`both` 把**同一份**签名会话值同时写进 httpOnly cookie 与响应 JSON（`src/server.mjs:272-279`，两处同值，均来自 `issueSession`，`src/server.mjs:236`）。body 里的 token **不受 `HttpOnly` 保护**：页面任意 JS（含第三方脚本 / 埋点 SDK）、服务端与反代的访问日志、APM 都能读到它——暴露面大于 httpOnly cookie，`HttpOnly` 的防护意义被抵消。响应已带 `Cache-Control: no-store`（`src/server.mjs:29`），缓存/中介存储风险受控；只有在站点把 token 再写进 URL 或 localStorage 时，才进一步进入浏览器历史/持久存储（属站点行为，非本包）。
 > - **适用**：同一站既有浏览器 cookie 会话、又需把 token 交给非 cookie 客户端（如 Taro/小程序复用同一登录响应）。
 > - **不适用**：纯浏览器站（用 `deliver:'cookie'`，回 token 无收益只增暴露）；纯 Bearer 站（用 `deliver:'token'`，不设 cookie）。
