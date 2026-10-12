@@ -2,7 +2,7 @@
 
 本仓遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式，版本语义按 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.11.0] - 2026-10-12
 
 ### Added
 
