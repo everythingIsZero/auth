@@ -160,3 +160,53 @@ export declare function getSession(
   req: Request,
   opts: { secret?: string; cookieName?: string; ttlSec?: number }
 ): { uid: string; iat: number } | null
+
+/** `loadUser` 回调的解析来源：`session`=新统一会话（收 uid）；`legacy`=迁移期旧 64hex cookie（收 token）。 */
+export interface LoadUserInfo {
+  kind: 'session' | 'legacy'
+  /** kind='legacy' 时命中的旧 cookie 名（如 'wi_session'） */
+  source?: string
+}
+
+/**
+ * 会话读取器的业务回调（**唯一**）：`idOrToken` → 本站用户（须含 `id`）或 null。
+ * `kind='session'` 时入参为新会话 uid；`kind='legacy'` 时入参为 64hex token（查本站 `sessions` 表）。
+ */
+export type LoadUser = (
+  idOrToken: string,
+  info: LoadUserInfo,
+) => Promise<{ id: string } & Record<string, unknown> | null> | ({ id: string } & Record<string, unknown>) | null
+
+export interface SessionReaderConfig {
+  /** 会话签名密钥；可传函数按请求取值。缺失 → `read`/`renew` 均 null（fail-closed）。 */
+  secret: string | (() => string)
+  /** 会话 TTL（秒），缺省 172800（48h）；须与签发侧 `session.ttlSec` 同值 */
+  ttlSec?: number
+  /** 统一会话 cookie 名，缺省 `app_session` */
+  cookieName?: string
+  /** 迁移期旧 cookie 名（站点声明，如 `['fang_session']`）；与统一会话同名/空串自动忽略 */
+  legacyCookies?: string[]
+  /** 本站查库回调（唯一业务入口） */
+  loadUser: LoadUser
+  /** 与 `renewSession` 同口径：缺省恒 `true`，仅显式 `false` 且非生产才关 */
+  secure?: boolean
+  /** env 访问器：缺省 `process.env`；与签发侧 `createAuthServer` 的 `env` 同口径 */
+  env?: Record<string, string | undefined> | ((key: string) => string | undefined)
+}
+
+export interface SessionReader {
+  /** 读会话：新会话验签 + `loadUser(uid,{kind:'session'})`，否则回落旧 64hex cookie；无效/缺失 → null（无副作用） */
+  read: (req: Request) => Promise<Record<string, unknown> | null>
+  /**
+   * 续期/升级（**Node-only**）：新会话过续期点（`renewIfStale`）或 legacy 命中 → 返带 `Set-Cookie` 的 200
+   * `Response`；否则 null。`Secure` 决策与签发侧同源（`core.resolveSessionSecure`）。
+   */
+  renew: (req: Request) => Promise<Response | null>
+}
+
+/**
+ * 会话读取器（**Node-only**：验签/重签经 `node:crypto`）。收敛各站 `lib/auth.ts` 会话胶水（审计 A1/A2/A3）：
+ * cookie 名、TTL、legacy 64hex 判定、静默续期、legacy 升级写新名单源；站点只交 `loadUser` 与 `legacyCookies`。
+ * **Edge middleware 不可引本函数**——只从 `@hxym18/auth/core` 取 `LEGACY_*` 常量做格式粗判。
+ */
+export declare function createSessionReader(config: SessionReaderConfig): SessionReader

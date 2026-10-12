@@ -13,14 +13,14 @@
 
 | 出口 | 运行时 | 职责 |
 |---|---|---|
-| `@hxym18/auth/server` | 服务端（框架无关；**运行时限 Node**） | `createAuthServer`（核心）+ `getSession`（读 cookie/Bearer → uid）。Next/Hono 薄适配；Edge/CF 需自备签名 |
+| `@hxym18/auth/server` | 服务端（框架无关；**运行时限 Node**） | `createAuthServer`（核心）+ `getSession`（读 cookie/Bearer → uid）+ `createSessionReader`（迁移期会话读取/续期）。Next/Hono 薄适配；Edge/CF 需自备签名 |
 | `@hxym18/auth/next` | Next.js 服务端 | `createAuthRoutes`（= 核心的 Next 出口名，薄层） |
 | `@hxym18/auth/hono` | Hono 服务端 | `createHonoAuthRoutes`：核心的 Hono 薄适配（Context→Request，几行） |
 | `@hxym18/auth/node` | Node | 会话签名/验签、`renewSession`（续期回写，Node-only）、`callAuthServer`、`exchangeWeappCode`（小程序换码，含 unionid） |
 | `@hxym18/auth/controller` | 全环境（零框架依赖） | 登录控制器：按端分流、SSO 跳转/回跳、PC 取码轮询、手机配对码、dev-login |
 | `@hxym18/auth/react` | 浏览器 + React | `useSsoLogin` 钩子（接线 + 状态订阅） |
 | `@hxym18/auth/taro` | Taro（H5/小程序） | `createTaroLogin` + `createTaroApi`（H5）；`createWeappLogin`（取 code）；`createWeappProfile`（资料采集）；小程序端 controller 惰性 |
-| `@hxym18/auth/core` | 浏览器/Edge | 同构常量与纯函数（票根名/格式、redirect 白名单、`buildAuthRedirect`、`renewIfStale`、`profileFallback`、`loginCapsFromCapabilities`） |
+| `@hxym18/auth/core` | 浏览器/Edge | 同构常量与纯函数（票根名/格式、redirect 白名单、`buildAuthRedirect`、`renewIfStale`、`profileFallback`、`loginCapsFromCapabilities`、迁移期 `LEGACY_*` 旧 cookie 名/64hex 正则） |
 | `@hxym18/auth`（`.`） | Node | `core` + `node` 聚合（含 `node:crypto`，勿在 Edge 引） |
 
 > **换框架不用重写**：登录逻辑只在 `server.mjs` 写一次（Web `Request`/`Response`）。换掉 Next/Hono 时，新框架只需几行适配（`c.req.raw` ↔ `Request`）；不属 Web 标准的框架（Express）用 `@hxym18/auth/server` + 一行 `dispatch`，登录逻辑零改动。
@@ -128,6 +128,30 @@ export function LoginPanel() {
 > // 中间件读侧：同传 session.ttlSec
 > const who = getSession(req, { secret: session.secret, cookieName: session.cookieName, ttlSec: session.ttlSec })
 > ```
+
+**会话读取 / 续期 `createSessionReader({ secret, ttlSec, legacyCookies, loadUser })`**（`@hxym18/auth/server`，**Node-only**）→ `{ read, renew }`：收敛各站 `lib/auth.ts` 的会话胶水（审计 A1/A2/A3）——读 `app_session` → 验签 → 按 uid 查本站用户，过续期点静默重签写回；迁移期双读旧 64hex cookie → 查本站 `sessions` 表 → 命中即升级写新名。站点只交 `loadUser(idOrToken, { kind, source })`（本站查库，**唯一业务回调**）与 `legacyCookies`（本站旧 cookie 名）；cookie 名、TTL、64hex 判定、静默续期、升级全部单源。
+
+```js
+import { createSessionReader } from '@hxym18/auth/server'
+
+// 单源：签发与读取共用同一份 session 配置（ttlSec 必须一致）
+const session = { secret: process.env.SESSION_SECRET, ttlSec: SESSION_TTL_SEC }
+const reader = createSessionReader({
+  secret: session.secret,
+  ttlSec: session.ttlSec,
+  legacyCookies: ['wi_session'], // 本站迁移期旧 cookie（查本站 sessions 表）
+  loadUser: (idOrToken, { kind }) =>
+    kind === 'legacy' ? findUserByLegacyToken(idOrToken) : findUserById(idOrToken),
+})
+
+const user = await reader.read(req) // 读会话 → 本站用户 | null（无副作用）
+const res = await reader.renew(req) // 需续期/升级 → 带 Set-Cookie 的 Response | null
+```
+
+- `read` 无副作用；`renew` 返 `Response`（**只能 Node 回写会话；Edge middleware 不可续期**）。`read` 与 `renew` **各自独立解析**（同一请求同时调用会各查一次 `loadUser`）。
+- `loadUser` 返回形状 `{ id, ... }`（`id` 即会话 uid / 旧 token 对应的本站 `users.id`）；返回 null 视作未命中——新会话用户不存在时会**回落**旧 cookie 双读。
+- `secure` / `env` 与 `renewSession` **同口径**（`Secure` 决策单一来源 `core.resolveSessionSecure`）。
+- **Edge 只取常量、不引读取器**：`@hxym18/auth/core` 导出 `LEGACY_HMD_COOKIE` / `LEGACY_HMD_WECHAT_COOKIE` / `LEGACY_WORDINPUT_COOKIE` / `LEGACY_FANG_COOKIE` / `LEGACY_SESSION_COOKIES` / `LEGACY_HEX_RE`（64hex 正则）；middleware 只做格式粗判，真伪由本读取器/API 兜底。
 
 **会话 cookie 硬化**：`Set-Cookie` 固定 `Path=/; HttpOnly; SameSite=Lax` 且**不设 `Domain`**（host-only；`src/server.mjs:34-36`，读侧自持同款 `src/node.mjs:219-221`）；**`Secure` 缺省恒开、不看 `NODE_ENV`**（单一决策口径 `core.resolveSessionSecure`，`src/core.mjs:77`）。仅当**显式** `session.secure === false`（签发侧 `src/server.mjs:277`）或 `renewSession(..., { secure: false })`（续期侧 `src/node.mjs:261`）**且当前非生产**（`env.NODE_ENV !== 'production'`）才关，供**本地 http 开发**；**生产里显式关无效**（fail-closed 仍带 `Secure`）。**本地 http 开发请用该显式开关，不要靠 `NODE_ENV` 推断。** 续期侧 `renewSession` 的 `env` 选项与签发侧 `createAuthServer` 的 `env` **同口径**——注入 env 时 `Secure` 决策只读注入源，不读 `process.env`（注入 env 的站：测试、Edge 代理、多租，续期不再漏 `Secure`）。
 

@@ -13,7 +13,7 @@
  * env 契约（缺省从 process.env 读，可显式覆写或注入 env）：AUTH_INTERNAL_URL / AUTH_INTERNAL_SECRET /
  * AUTH_ISSUE_ORG / WEAPP_APPID / WEAPP_SECRET / NODE_ENV。
  */
-import { APP_SESSION_COOKIE, SESSION_TTL_SEC, isTicket, resolveSessionSecure } from './core.mjs'
+import { APP_SESSION_COOKIE, SESSION_TTL_SEC, isTicket, renewIfStale, resolveSessionSecure, LEGACY_HEX_RE } from './core.mjs'
 import { callAuthServer, exchangeWeappCode, issueSession, readCookieValue, readSession, SESSION_UID_RE } from './node.mjs'
 
 /** 统一 no-store（票根/会话响应一律不可缓存） */
@@ -56,6 +56,103 @@ export function getSession(req, opts) {
   }
   if (!value) return null
   return readSession(value, { secret, ttlSec: o.ttlSec })
+}
+
+/**
+ * 会话读取器（**Node-only**：验签/重签经 node.mjs 依赖 `node:crypto`）。
+ *
+ * 为什么存在：各站 `lib/auth.ts` 的会话胶水（审计 A1/A2/A3）是同一骨架逐字复制——
+ *   ① 读 `app_session` → 验签 → 按 uid 查本站用户；过续期点则静默重签写回（滑动续期）
+ *   ② 迁移期双读旧 64hex cookie（`wi_session`/`fang_session`）→ 查本站 `sessions` 表 → 命中即升级写新名
+ * 本工厂把骨架收进包：站点只交 `loadUser`（本站查库）与 `legacyCookies`（本站旧 cookie 名）；
+ * cookie 名（`app_session`）、TTL、legacy 64hex 判定、静默续期、升级写新名全部单源。
+ *
+ * 出口分层：**Edge middleware 只从 `@hxym18/auth/core` 取 `LEGACY_*` 常量**做格式粗判，不引本函数
+ * （本函数含 node 密码学，Edge 不可载）。
+ *
+ * @param {{
+ *   secret: string | (() => string),
+ *   ttlSec?: number,
+ *   cookieName?: string,
+ *   legacyCookies?: string[],
+ *   loadUser: (idOrToken: string, info: { kind: 'session' | 'legacy', source?: string }) => unknown | Promise<unknown>,
+ *   secure?: boolean,
+ *   env?: Record<string, string | undefined> | ((key: string) => string | undefined),
+ * }} config
+ *        secret 必填（可传函数按请求取值）；ttlSec 缺省 172800（48h），须与签发侧同值；
+ *        cookieName 缺省 `app_session`；legacyCookies = 站点私有旧 cookie 名（与统一会话同名/空串自动忽略）；
+ *        loadUser(idOrToken, {kind,source}) 是**唯一业务回调**（kind='session' 收 uid，kind='legacy'
+ *        收 64hex token，source=命中的 cookie 名），返回 `{ id }` 形状的本站用户或 null；
+ *        secure/env 与 `renewSession` 同口径（`Secure` 决策单一来源 `core.resolveSessionSecure`）。
+ * @returns {{ read: (req: Request) => Promise<object | null>, renew: (req: Request) => Promise<Response | null> }}
+ *        `read`：读会话 → 用户 | null（无副作用）。`renew`：需续期/升级时返带 `Set-Cookie` 的
+ *        `Response`（**仅 Node**），否则 null。`read` 与 `renew` 各自独立解析（同请求同时调用会各查一次 `loadUser`）。
+ */
+export function createSessionReader(config) {
+  const cfg = config || {}
+  const cookieName = cfg.cookieName || APP_SESSION_COOKIE
+  const ttlRaw = cfg.ttlSec != null ? Number(cfg.ttlSec) : SESSION_TTL_SEC
+  const ttlSec = Number.isFinite(ttlRaw) && ttlRaw > 0 ? ttlRaw : SESSION_TTL_SEC
+  // 与 createAuthServer 的 session.legacyCookies 同口径：去空、去与统一会话同名者。
+  const legacyCookies = Array.isArray(cfg.legacyCookies)
+    ? cfg.legacyCookies.filter((n) => typeof n === 'string' && n.trim() && n !== cookieName)
+    : []
+  const loadUser = typeof cfg.loadUser === 'function' ? cfg.loadUser : null
+  const secretOf = () => (typeof cfg.secret === 'function' ? cfg.secret() : cfg.secret)
+  const envSource = cfg.env != null ? cfg.env : typeof process !== 'undefined' ? process.env : undefined
+  const envGet = (k) => {
+    const v = typeof envSource === 'function' ? envSource(k) : envSource ? envSource[k] : undefined
+    return v == null ? '' : String(v)
+  }
+
+  /** 解析当前请求会话：新会话优先（验签 + loadUser），否则迁移期旧 cookie（64hex + loadUser）。 */
+  async function resolve(req) {
+    const secret = secretOf()
+    if (typeof secret !== 'string' || !secret || !req || !req.headers) return null
+    const cookieHeader = req.headers.get('cookie') || ''
+    const appValue = readCookieValue(cookieHeader, cookieName)
+    const session = readSession(appValue, { secret, ttlSec })
+    if (session) {
+      const user = loadUser ? await loadUser(session.uid, { kind: 'session' }) : null
+      // 与站点存量一致：新会话有效但用户不存在 → 不返回，继续回落 legacy 双读。
+      if (user) return { user, uid: session.uid, iat: session.iat, fromLegacy: false }
+    }
+    for (const name of legacyCookies) {
+      const token = readCookieValue(cookieHeader, name)
+      if (!token || !LEGACY_HEX_RE.test(token)) continue
+      const user = loadUser ? await loadUser(token, { kind: 'legacy', source: name }) : null
+      // 升级需给合法 uid 签新会话（uid 契约同 issueSession）；用户形状不符则视作未命中。
+      if (user && typeof user.id === 'string' && SESSION_UID_RE.test(user.id)) {
+        return { user, uid: user.id, iat: null, fromLegacy: true }
+      }
+    }
+    return null
+  }
+
+  async function read(req) {
+    const r = await resolve(req)
+    return r ? r.user : null
+  }
+
+  async function renew(req) {
+    const r = await resolve(req)
+    if (!r) return null
+    // 新会话：仅过续期点才滑动续期；legacy 命中：无条件升级写新名（同站点存量 refreshSessionCookie）。
+    if (!r.fromLegacy && !renewIfStale(r.iat, { ttlSec })) return null
+    const secret = secretOf()
+    if (typeof secret !== 'string' || !secret) return null
+    const { value, maxAgeSec } = issueSession(r.uid, { secret, ttlSec })
+    // Secure 决策与签发侧 createAuthServer / 续期侧 renewSession 共用 core.resolveSessionSecure（单一口径）。
+    const secure = resolveSessionSecure(envGet, cfg.secure)
+    const res = new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+    })
+    res.headers.append('set-cookie', sessionCookieHeader(cookieName, value, maxAgeSec, secure))
+    return res
+  }
+
+  return { read, renew }
 }
 
 /**

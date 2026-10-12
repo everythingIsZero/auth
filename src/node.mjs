@@ -20,11 +20,33 @@
  * Edge / 浏览器不可用本模块（无 node:crypto）；同构常量与纯函数见同包 core.mjs。
  */
 import crypto from 'node:crypto'
-import { APP_SESSION_COOKIE, SESSION_TTL_SEC, renewIfStale, resolveSessionSecure } from './core.mjs'
+import {
+  APP_SESSION_COOKIE,
+  SESSION_TTL_SEC,
+  renewIfStale,
+  resolveSessionSecure,
+  LEGACY_HMD_COOKIE,
+  LEGACY_HMD_WECHAT_COOKIE,
+  LEGACY_WORDINPUT_COOKIE,
+  LEGACY_FANG_COOKIE,
+  LEGACY_SESSION_COOKIES,
+  LEGACY_HEX_RE,
+} from './core.mjs'
 
 // 向后兼容：`renewIfStale` 实现已迁 `core.mjs`（纯函数、零 crypto）；此处仅再导出同一绑定，
 // 老消费方仍可从 `@hxym18/auth/node` 取（与 core 同源，不产生 export* 歧义）。
 export { renewIfStale } from './core.mjs'
+
+// 向后兼容：迁移期旧会话常量已下沉 `core.mjs`（Edge 可载，审计 A3）；此处再导出**同一绑定**，
+// 老消费方（如 wordinput `lib/auth.ts` 从 `.` 或 `node` 取 LEGACY_*）行为不变，且不产生 export* 歧义。
+export {
+  LEGACY_HMD_COOKIE,
+  LEGACY_HMD_WECHAT_COOKIE,
+  LEGACY_WORDINPUT_COOKIE,
+  LEGACY_FANG_COOKIE,
+  LEGACY_SESSION_COOKIES,
+  LEGACY_HEX_RE,
+} from './core.mjs'
 
 /**
  * 微信回调同款验签：sha1([token,timestamp,nonce] 字典序拼接) 与 signature 比对。
@@ -278,24 +300,8 @@ export function renewSession(req, opts) {
  * token 系只能本地校验格式，有效性仍需查各自 DB（本包不做 DB）。
  * -------------------------------------------------------------------------- */
 
-/** 旧 hmd 匿名会话 cookie 名 */
-export const LEGACY_HMD_COOKIE = 'hmd2'
-/** 旧 hmd 微信身份会话 cookie 名 */
-export const LEGACY_HMD_WECHAT_COOKIE = 'hmd2w'
-/** 旧 wordinput 会话 cookie 名（服务端 64hex token） */
-export const LEGACY_WORDINPUT_COOKIE = 'wi_session'
-/** 旧 fang 会话 cookie 名（服务端 64hex token） */
-export const LEGACY_FANG_COOKIE = 'fang_session'
-/** 全部旧会话 cookie 名（双读遍历顺序：HMAC 系优先，其次 token 系） */
-export const LEGACY_SESSION_COOKIES = [
-  LEGACY_HMD_WECHAT_COOKIE,
-  LEGACY_HMD_COOKIE,
-  LEGACY_WORDINPUT_COOKIE,
-  LEGACY_FANG_COOKIE,
-]
-
-/** 服务端 token cookie 格式：64 位小写 hex（wi_session/fang_session） */
-const LEGACY_TOKEN_RE = /^[a-f0-9]{64}$/
+/** 迁移期旧会话常量（`LEGACY_*` / `LEGACY_HEX_RE`）已下沉 `core.mjs` 并在本文件顶部再导出；
+ *  读取器实现见 `server.mjs` 的 `createSessionReader`。 */
 
 /**
  * 从原始 Cookie 头取指定 cookie 值（按首个 '=' 切分，值含 '=' 也安全；decode 失败回原文，不抛错）。
@@ -349,7 +355,7 @@ export function readLegacySession(cookieHeader, opts) {
       if (!variant) continue
       const uid = payload.slice(variant.length + 1)
       if (SESSION_UID_RE.test(uid)) return { source: variant, kind: 'hmac', uid }
-    } else if (LEGACY_TOKEN_RE.test(v)) {
+    } else if (LEGACY_HEX_RE.test(v)) {
       return { source: name, kind: 'token', token: v }
     }
   }

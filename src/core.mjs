@@ -105,6 +105,38 @@ export function renewIfStale(iat, opts) {
   return age >= threshold
 }
 
+/**
+ * 迁移期旧会话常量（**同构层单源**）：旧 cookie 名 + 服务端 64hex token 形态。
+ *
+ * 为什么在 core：旧 cookie 名与 64hex 正则是迁移期各站 `/lib/auth.ts` 与 Edge `middleware.ts`
+ * 逐字复制/硬编码的**纯常量**（审计 A3）。Edge middleware 引不了 `node` 出口，故只能放本层
+ * （零 Node 依赖，Edge 可直载）；Edge 侧只取常量做格式粗判，真伪仍由 Node 侧验签/查库兜底。
+ *
+ * 取值单源（2026-09-14 核对）：`hmd2`/`hmd2w` ← apps/hmd/src/lib/session.ts；
+ * `wi_session` ← wordinput、`fang_session` ← fang（服务端 `sessions` 表 64hex token）。
+ */
+/** 旧 hmd 匿名会话 cookie 名 */
+export const LEGACY_HMD_COOKIE = 'hmd2'
+/** 旧 hmd 微信身份会话 cookie 名 */
+export const LEGACY_HMD_WECHAT_COOKIE = 'hmd2w'
+/** 旧 wordinput 会话 cookie 名（服务端 64hex token） */
+export const LEGACY_WORDINPUT_COOKIE = 'wi_session'
+/** 旧 fang 会话 cookie 名（服务端 64hex token） */
+export const LEGACY_FANG_COOKIE = 'fang_session'
+/** 全部旧会话 cookie 名（双读遍历顺序：HMAC 系优先，其次 token 系） */
+export const LEGACY_SESSION_COOKIES = [
+  LEGACY_HMD_WECHAT_COOKIE,
+  LEGACY_HMD_COOKIE,
+  LEGACY_WORDINPUT_COOKIE,
+  LEGACY_FANG_COOKIE,
+]
+
+/**
+ * 服务端 token cookie 值形态：64 位**小写** hex（`sessions.token`；`wi_session` / `fang_session`）。
+ * 仅供格式粗判——token 是否有效仍需查各自站点 `sessions` 表（本包不做 DB）。
+ */
+export const LEGACY_HEX_RE = /^[a-f0-9]{64}$/
+
 /** 票根格式：48 位 hex（192bit 随机，大小写不敏感）；单源 auth 站 SESSION_RE */
 const TICKET_RE = /^[0-9a-f]{48}$/i
 

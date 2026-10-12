@@ -143,16 +143,18 @@ export declare function renewSession(
 
 /* ---- 旧 cookie 双读（迁移期） ---- */
 
-/** 旧 hmd 匿名会话 cookie 名（'hmd2'） */
-export declare const LEGACY_HMD_COOKIE: 'hmd2'
-/** 旧 hmd 微信身份会话 cookie 名（'hmd2w'） */
-export declare const LEGACY_HMD_WECHAT_COOKIE: 'hmd2w'
-/** 旧 wordinput 会话 cookie 名（'wi_session'） */
-export declare const LEGACY_WORDINPUT_COOKIE: 'wi_session'
-/** 旧 fang 会话 cookie 名（'fang_session'） */
-export declare const LEGACY_FANG_COOKIE: 'fang_session'
-/** 全部旧会话 cookie 名（双读遍历顺序：HMAC 系优先，其次 token 系） */
-export declare const LEGACY_SESSION_COOKIES: readonly string[]
+/**
+ * `LEGACY_*` 常量已下沉 `core.mjs`（Edge 可载，审计 A3）；此处再导出**同一绑定**，
+ * 保持 `@hxym18/auth/node` 向后兼容。新代码请优先从 `@hxym18/auth/core` 取。
+ */
+export {
+  LEGACY_HMD_COOKIE,
+  LEGACY_HMD_WECHAT_COOKIE,
+  LEGACY_WORDINPUT_COOKIE,
+  LEGACY_FANG_COOKIE,
+  LEGACY_SESSION_COOKIES,
+  LEGACY_HEX_RE,
+} from './core'
 
 /** 从原始 `Cookie:` 头取指定 cookie 值；缺失/非法 → null，不抛错 */
 export declare function readCookieValue(cookieHeader: unknown, name: string): string | null

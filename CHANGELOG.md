@@ -4,7 +4,10 @@
 
 ## [Unreleased]
 
-## [Unreleased]
+### Added
+
+- **迁移期旧会话常量下沉 `@hxym18/auth/core`**（审计 A3）：`LEGACY_HMD_COOKIE` / `LEGACY_HMD_WECHAT_COOKIE` / `LEGACY_WORDINPUT_COOKIE` / `LEGACY_FANG_COOKIE` / `LEGACY_SESSION_COOKIES` 与 `LEGACY_HEX_RE`（服务端 64hex token 形态）从 `node.mjs` 移入同构层，**Edge middleware 可直接取常量做格式粗判**（旧实现引不到 node 出口、被迫硬编码）。`@hxym18/auth/node`（及聚合出口 `.`）再导出**同一绑定**——向后兼容，且与 core 同源、不产生 `export*` 歧义。
+- **`createSessionReader(config)`（`@hxym18/auth/server`，Node-only）**：收敛各站 `lib/auth.ts` 的会话胶水（审计 A1/A2/A3）→ `{ read, renew }`。新会话读 `app_session`（验签 + `loadUser(uid, { kind:'session' })`）→ 过续期点静默重签写回；回落迁移期旧 64hex cookie（`loadUser(token, { kind:'legacy', source })`，命中即升级写新名）。站点只交 `loadUser`（本站查库，唯一业务回调）与 `legacyCookies`（本站旧 cookie 名）；cookie 名、TTL、64hex 判定、续期、升级全部单源，`Secure` 决策与签发侧共用 `core.resolveSessionSecure`。
 
 ## [0.10.0] - 2026-10-11
 

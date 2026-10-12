@@ -46,6 +46,22 @@ export interface RenewIfStaleOptions {
  */
 export declare function renewIfStale(iat: number, opts?: RenewIfStaleOptions): boolean
 
+/** 迁移期旧 hmd 匿名会话 cookie 名（'hmd2'） */
+export declare const LEGACY_HMD_COOKIE: 'hmd2'
+/** 迁移期旧 hmd 微信身份会话 cookie 名（'hmd2w'） */
+export declare const LEGACY_HMD_WECHAT_COOKIE: 'hmd2w'
+/** 迁移期旧 wordinput 会话 cookie 名（'wi_session'，服务端 64hex token） */
+export declare const LEGACY_WORDINPUT_COOKIE: 'wi_session'
+/** 迁移期旧 fang 会话 cookie 名（'fang_session'，服务端 64hex token） */
+export declare const LEGACY_FANG_COOKIE: 'fang_session'
+/** 全部旧会话 cookie 名（双读遍历顺序：HMAC 系优先，其次 token 系） */
+export declare const LEGACY_SESSION_COOKIES: readonly string[]
+/**
+ * 服务端 token cookie 值形态：64 位**小写** hex（`sessions.token`）。
+ * 仅供格式粗判（Edge middleware 可直用），有效性仍需查各站 `sessions` 表。
+ */
+export declare const LEGACY_HEX_RE: RegExp
+
 /** 判值是否为合法票根（48 位 hex，大小写不敏感） */
 export declare function isTicket(v: unknown): v is string
 
