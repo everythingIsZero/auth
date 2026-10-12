@@ -223,12 +223,12 @@ auth 消费的门面端点形态（`callAuthServer` POST JSON + `x-auth-secret`�
 
 | 端点 | 门面形态 | auth 取用 |
 |---|---|---|
-| `introspect` | `{ openid, unionid? }` | `openid` 认人；`unionid` 有则透传 `resolveIdentity.ctx`，无则 `null`（不阻塞登录） |
-| `profile` | `{ profile: { nickname, avatar } }` | 补昵称/头像（需配 `authServer.org`），取用失败降级 |
+| `introspect` | `{ openid, unionid }` | `openid` 认人；`unionid` 有则透传 `resolveIdentity.ctx`，无则 `null`（不阻塞登录） |
+| `profile` | `{ profile: { nickname, avatar }, unionid }` | 补昵称/头像（需配 `authServer.org`），取用失败降级 |
 | `qr/issue` | `{ scene, qrUrl, pairCode?, confirm? }` | `scene`/`qrUrl` 必给；`pairCode`/`confirm` 门面有才透传 |
 | `qr/poll` | `{ status, openid?, nickname?, avatar?, unionid? }` | `status≠ok` 原样透传；`status=ok` 时取 `openid` 签会话，昵称/头像/unionid 有则透传 |
 
-**`unionid` 现状（pending）**：真门面 `introspect` 当前**只回 `openid`**（`sso-bridge/auth-service.mjs`）；`unionid` 为**待门面变更的依赖项**（见 [`account-unification.md`](../../knowledge/integration/account-unification.md) §12）。auth 已 **unionid-ready**：门面回则透传、不回则 `null`，登录链路不受影响；`test/facade.test.mjs` 用 fake 门面覆盖**有/无 `unionid` 两态**。
+**`unionid` 现状（2026-10-12：已回传）**：真门面 `introspect` / `profile` / `qr/poll` **均已回传 `unionid`**（缺=`null`；`sso-bridge` 实现见 `auth-service.mjs`，开放平台绑定后生效）。契约 `facade@1+<sha8>` 的 `pending` 已清空；auth 侧 **unionid-ready** 不变：有则透传 `resolveIdentity.ctx`、无则 `null`，登录链路不受影响；`test/facade.test.mjs` 覆盖**有/无 `unionid` 两态**。站点启用见 [`account-unification.md`](../../knowledge/integration/account-unification.md) §12。
 
 ## Taro（H5 与 Next 对等；小程序登录走共享核心，UI/动线自备）
 

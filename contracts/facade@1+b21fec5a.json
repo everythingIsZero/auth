@@ -4,14 +4,16 @@
       "method": "POST",
       "responseKeys": [
         "ok",
-        "openid"
+        "openid",
+        "unionid"
       ]
     },
     "profile": {
       "method": "POST",
       "responseKeys": [
         "ok",
-        "profile"
+        "profile",
+        "unionid"
       ]
     },
     "qr.issue": {
@@ -31,12 +33,11 @@
         "ok",
         "status",
         "openid",
+        "unionid",
         "nickname",
         "avatar"
       ]
     }
   },
-  "pending": [
-    "unionid"
-  ]
+  "pending": []
 }

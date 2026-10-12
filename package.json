@@ -112,8 +112,8 @@
       "sensitive-prefixes": "1+262b9b7c",
       "endpoints": "1+7483ca8a",
       "capability-projection": "1+8f9e361b",
-      "facade": "1+c71ed707",
-      "contracts": "1+2ca48235"
+      "facade": "1+b21fec5a",
+      "contracts": "1+df29055e"
     }
   }
 }

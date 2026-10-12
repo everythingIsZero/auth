@@ -6,6 +6,8 @@
 
 ### Docs
 
+- **门面契约同步：`unionid` 转 required（2026-10-12）**：`sso-bridge` 已在 `introspect` / `profile` / `qr/poll` 三响应回传 `unionid`（微信开放平台绑定落地），契约 `facade@1+<sha8>` 的 `pending` 清空，`Projects/auth/contracts/` 内联副本随生成器更新（`contracts@1+<sha8>` 指针同步）。**auth 源码零改动**（早已 `unionid-ready`，有则透传 `ctx.unionid`、无则 `null`）；`test/facade.test.mjs` 两态覆盖不变。详见 [`account-unification.md`](../../knowledge/integration/account-unification.md) §12。
+
 - **`AUTH_ORIGIN` 登记为 SSO 源单源（OPS-9）**：`@hxym18/auth/core` 早已导出该常量（自 v0.1.0），本批补文档并收紧声明——README 出口表/说明写明站点一律取 `AUTH_ORIGIN`（`'https://auth.hxym18.com'`，无尾斜杠），勿再硬编码（wordinput / fang / nuantie 历史上共 4 处逐字复制）。`src/core.d.ts` 声明由 `string` 收紧为字面量类型 `'https://auth.hxym18.com'`（仅精度，兼容既有消费方）；`core.test.mjs` 增断言：值正确、可从 core 取、规范 origin 形态、且为 `buildAuthRedirect` 缺省 origin（单源不分叉）。**无行为变更，无新出口，无需发版**。
 
 ## [0.11.0] - 2026-10-12
