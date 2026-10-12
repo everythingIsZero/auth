@@ -165,7 +165,14 @@ export function isSsoScene(v) {
 /** 微信 provider 名（identities.provider 单值） */
 export const WECHAT_PROVIDER = 'wechat'
 
-/** auth 中转站 origin（SSO 动线入口；单源 deploy/auth/index.html） */
+/**
+ * auth 中转站 origin（SSO 动线入口；**SSO 源单源**，OPS-9）。
+ *
+ * 站点一律从本出口取（`import { AUTH_ORIGIN } from '@hxym18/auth/core'`），
+ * **勿再硬编码 `https://auth.hxym18.com`**（历史上 wordinput / fang / nuantie 共 4 处逐字复制）。
+ * 规范形态：https + host `auth.hxym18.com` + **无尾斜杠**（拼接时自行加 `/`）。
+ * 纯常量、零 Node 依赖，Edge 可直载；取值单源 `deploy/auth/index.html`。
+ */
 export const AUTH_ORIGIN = 'https://auth.hxym18.com'
 
 /** CloudBase 环境 ID（auth 站换取会话所用云环境；单源 deploy/auth/index.html CLOUD_ENV） */

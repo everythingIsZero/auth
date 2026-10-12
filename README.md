@@ -20,10 +20,11 @@
 | `@hxym18/auth/controller` | 全环境（零框架依赖） | 登录控制器：按端分流、SSO 跳转/回跳、PC 取码轮询、手机配对码、dev-login |
 | `@hxym18/auth/react` | 浏览器 + React | `useSsoLogin` 钩子（接线 + 状态订阅） |
 | `@hxym18/auth/taro` | Taro（H5/小程序） | `createTaroLogin` + `createTaroApi`（H5）；`createWeappLogin`（取 code）；`createWeappProfile`（资料采集）；小程序端 controller 惰性 |
-| `@hxym18/auth/core` | 浏览器/Edge | 同构常量与纯函数（票根名/格式、redirect 白名单、`buildAuthRedirect`、`renewIfStale`、`profileFallback`、`loginCapsFromCapabilities`、迁移期 `LEGACY_*` 旧 cookie 名/64hex 正则） |
+| `@hxym18/auth/core` | 浏览器/Edge | 同构常量与纯函数（票根名/格式、redirect 白名单、**SSO 源 `AUTH_ORIGIN`（单源，OPS-9）**、`buildAuthRedirect`、`renewIfStale`、`profileFallback`、`loginCapsFromCapabilities`、迁移期 `LEGACY_*` 旧 cookie 名/64hex 正则） |
 | `@hxym18/auth`（`.`） | Node | `core` + `node` 聚合（含 `node:crypto`，勿在 Edge 引） |
 
 > **换框架不用重写**：登录逻辑只在 `server.mjs` 写一次（Web `Request`/`Response`）。换掉 Next/Hono 时，新框架只需几行适配（`c.req.raw` ↔ `Request`）；不属 Web 标准的框架（Express）用 `@hxym18/auth/server` + 一行 `dispatch`，登录逻辑零改动。
+> **SSO 源单源（OPS-9）**：站点跳转 auth 站一律取 `@hxym18/auth/core` 的 **`AUTH_ORIGIN`**（`'https://auth.hxym18.com'`，无尾斜杠），**勿再硬编码 `https://auth.hxym18.com/`**——历史上 wordinput / fang / nuantie 共 4 处逐字复制同一值。需要完整跳转 URL 时用 `buildAuthRedirect(returnUrl)`（其缺省 origin 即 `AUTH_ORIGIN`）。
 > **注意**：核心**框架无关，但运行时限 Node**（内部经 `node:crypto` 签会话）。Edge / Cloudflare Workers 等无 `node:crypto` 的运行时**不能直接引**，需自备签名。
 
 ## 安装

@@ -74,8 +74,8 @@ export declare function isSsoScene(v: unknown): boolean
 /** 微信 provider 名（'wechat'） */
 export declare const WECHAT_PROVIDER: 'wechat'
 
-/** auth 中转站 origin（'https://auth.hxym18.com'） */
-export declare const AUTH_ORIGIN: string
+/** auth 中转站 origin（'https://auth.hxym18.com'；SSO 源单源，站点勿硬编码；无尾斜杠） */
+export declare const AUTH_ORIGIN: 'https://auth.hxym18.com'
 
 /** CloudBase 环境 ID（auth 站云环境；'cloud1-5gmlb2qmf0f1963b'） */
 export declare const CLOUD_ENV_ID: string

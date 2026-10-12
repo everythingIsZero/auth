@@ -2,6 +2,12 @@
 
 本仓遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式，版本语义按 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### Docs
+
+- **`AUTH_ORIGIN` 登记为 SSO 源单源（OPS-9）**：`@hxym18/auth/core` 早已导出该常量（自 v0.1.0），本批补文档并收紧声明——README 出口表/说明写明站点一律取 `AUTH_ORIGIN`（`'https://auth.hxym18.com'`，无尾斜杠），勿再硬编码（wordinput / fang / nuantie 历史上共 4 处逐字复制）。`src/core.d.ts` 声明由 `string` 收紧为字面量类型 `'https://auth.hxym18.com'`（仅精度，兼容既有消费方）；`core.test.mjs` 增断言：值正确、可从 core 取、规范 origin 形态、且为 `buildAuthRedirect` 缺省 origin（单源不分叉）。**无行为变更，无新出口，无需发版**。
+
 ## [0.11.0] - 2026-10-12
 
 ### Added

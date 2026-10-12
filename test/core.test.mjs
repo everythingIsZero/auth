@@ -41,6 +41,17 @@ test('常量取值与存量单源一致', () => {
   assert.equal(CLOUD_ENV_ID, 'cloud1-5gmlb2qmf0f1963b')
 })
 
+test('AUTH_ORIGIN：SSO 源单源（规范 origin，且为 buildAuthRedirect 缺省 origin）', () => {
+  // 可从 core 取；规范 origin：https + host auth.hxym18.com + 无尾斜杠
+  const u = new URL(AUTH_ORIGIN)
+  assert.equal(u.protocol, 'https:')
+  assert.equal(u.hostname, 'auth.hxym18.com')
+  assert.equal(AUTH_ORIGIN, 'https://auth.hxym18.com')
+  assert.equal(AUTH_ORIGIN.endsWith('/'), false)
+  // 单源：buildAuthRedirect 缺省 origin 即 AUTH_ORIGIN（改常量不会与跳转构造分叉）
+  assert.ok(buildAuthRedirect('https://ka.hxym18.com/').startsWith(`${AUTH_ORIGIN}/?redirect=`))
+})
+
 test('sessionCookieName：微信标记 → app_session_w，缺省 → app_session', () => {
   assert.equal(sessionCookieName(), 'app_session')
   assert.equal(sessionCookieName({}), 'app_session')
