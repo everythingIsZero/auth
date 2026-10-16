@@ -13,7 +13,7 @@
  * env 契约（缺省从 process.env 读，可显式覆写或注入 env）：AUTH_INTERNAL_URL / AUTH_INTERNAL_SECRET /
  * AUTH_ISSUE_ORG / WEAPP_APPID / WEAPP_SECRET / NODE_ENV。
  */
-import { APP_SESSION_COOKIE, SESSION_TTL_SEC, isTicket, renewIfStale, resolveSessionSecure, LEGACY_HEX_RE } from './core.mjs'
+import { APP_SESSION_COOKIE, SESSION_TTL_SEC, isTicket, renewIfStale, resolveSessionSecure, LEGACY_HEX_RE, authErrorCode } from './core.mjs'
 import { callAuthServer, exchangeWeappCode, issueSession, readCookieValue, readSession, SESSION_UID_RE } from './node.mjs'
 
 /** 统一 no-store（票根/会话响应一律不可缓存） */
@@ -190,11 +190,12 @@ async function introspectTicket(conf, ticket) {
   return { ok: false, kind: 'unavailable' }
 }
 
-/** 认人失败 → 对外的响应（文案与各站存量保持一致，用户侧读得懂） */
-function introspectFailure(kind) {
-  if (kind === 'not_configured') return json({ ok: false, error: 'SSO 通道未配置' }, 503)
-  if (kind === 'misconfig') return json({ ok: false, error: '登录通道配置异常' }, 500)
-  return json({ ok: false, error: '登录服务暂时不可用，请稍后再试' }, 503)
+/** 认人失败 → 对外的响应（文案与各站存量保持一致，用户侧读得懂）。
+ *  形状由装配期的 `errorShape` 决定，故经 `errorJson` 出口（模块级函数拿不到闭包，按参数注入）。 */
+function introspectFailure(kind, errorJson) {
+  if (kind === 'not_configured') return errorJson(503, 'SSO 通道未配置')
+  if (kind === 'misconfig') return errorJson(500, '登录通道配置异常')
+  return errorJson(503, '登录服务暂时不可用，请稍后再试')
 }
 
 /**
@@ -211,6 +212,10 @@ function introspectFailure(kind) {
  *   onFirstLogin?: (ctx: { uid: string, source: 'sso'|'qr'|'weapp', openid: string, unionid: string|null }) => Promise<void>|void,
  *   loadProfile?: (uid: string) => Promise<{ displayName?: string|null, avatar?: string|null }|null> | { displayName?: string|null, avatar?: string|null } | null,
  *   userPayload?: (id: string, displayName?: string|null, avatar?: string|null) => unknown,
+ *   errorShape?: 'error' | 'code-message',
+ *        'error'（缺省）：`{ ok:false, error:'<中文文案>' }`；
+ *        'code-message' ：`{ ok:false, code:'<稳定码>', message:'<中文文案>' }`（码表见 core.AUTH_ERROR_CODES）。
+ *        非法值抛 TypeError。
  *   env?: Record<string, string | undefined> | ((key: string) => string | undefined)
  * }} config
  */
@@ -242,6 +247,24 @@ export function createAuthServer(config) {
   if (!['cookie', 'token', 'both'].includes(deliver)) {
     throw new TypeError(`createAuthServer: 未知 session.deliver「${deliver}」（cookie|token|both）`)
   }
+  /**
+   * 错误体形状（P-3）：
+   *   'error'（缺省）：`{ ok:false, error:'<中文文案>' }`——存量站（fang/wordinput）按此读 `data.error`，逐字不变。
+   *   'code-message' ：`{ ok:false, code:'<稳定码>', message:'<中文文案>' }`——站点按 `code` 分支，
+   *                    不靠中文文案判类型（文案一改前端分支就断）。码表见 core.AUTH_ERROR_CODES。
+   * 为什么做成配置而不是直接改默认：两站现读 `error`，硬切会断；站点「各站一致」靠**各站都选同一种**达成。
+   */
+  const errorShape = cfg.errorShape === undefined ? 'error' : cfg.errorShape
+  if (errorShape !== 'error' && errorShape !== 'code-message') {
+    throw new TypeError(`createAuthServer: 未知 errorShape「${errorShape}」（error|code-message）`)
+  }
+  /** 错误体对象（`extra` 为站点附加字段，如 allowlist 的 `configured`）。 */
+  const errorBody = (status, message, extra) =>
+    errorShape === 'code-message'
+      ? { ok: false, code: authErrorCode(status), message, ...(extra || {}) }
+      : { ok: false, error: message, ...(extra || {}) }
+  /** 错误响应（唯一出口，一处决定形状）。 */
+  const errorJson = (status, message, extra) => json(errorBody(status, message, extra), status)
   /**
    * 会话密钥按请求取值：允许传函数，则每次请求重新读 env。
    * 密钥是「运行期才注入」的环境变量，装配期往往读不到；缺配按 fail-closed 返 503，不签任何会话。
@@ -293,11 +316,11 @@ export function createAuthServer(config) {
 
   /** 403 响应体（不在准入名单）。allowlist 站额外带 `configured` 区分「没配名单」与「不在名单」。 */
   function deniedBody() {
-    const body = { ok: false, error: '没有访问权限' }
-    if (anchor === 'allowlist') {
-      body.configured = Boolean(String(envGet(anchorEnv)).trim()) && Boolean(secretOf())
-    }
-    return body
+    const extra =
+      anchor === 'allowlist'
+        ? { configured: Boolean(String(envGet(anchorEnv)).trim()) && Boolean(secretOf()) }
+        : undefined
+    return errorBody(403, '没有访问权限', extra)
   }
 
   /** 准入判定 → uid：白名单锚定在工厂内做（声明式），其余交各站 resolveIdentity（唯一业务入口） */
@@ -342,10 +365,10 @@ export function createAuthServer(config) {
    */
   async function signForUid(uid, displayName, avatar) {
     if (typeof uid !== 'string' || !SESSION_UID_RE.test(uid)) {
-      return { ok: false, status: 500, body: { ok: false, error: '身份锚定异常' } }
+      return { ok: false, status: 500, body: errorBody(500, '身份锚定异常') }
     }
     const secret = secretOf()
-    if (!secret) return { ok: false, status: 503, body: { ok: false, error: '会话密钥未配置' } }
+    if (!secret) return { ok: false, status: 503, body: errorBody(503, '会话密钥未配置') }
     const { value, maxAgeSec } = issueSession(uid, { secret, ttlSec })
     // 读回本站资料（若配 loadProfile）：未给的字段用站点已存资料补齐（weapp 继承 H5）。
     let dn = displayName ?? null
@@ -406,10 +429,10 @@ export function createAuthServer(config) {
     const body = await req.json().catch(() => null)
     // 宽容入参：统一契约为 {ticket}，同时接受存量各站的 {webSession}
     const ticket = String((body && (body.ticket || body.webSession)) || '').trim()
-    if (!isTicket(ticket)) return json({ ok: false, error: '无效票根' }, 401)
+    if (!isTicket(ticket)) return errorJson(401, '无效票根')
     const r = await introspectTicket(conf, ticket)
-    if (!r.ok) return introspectFailure(r.kind)
-    if (!r.openid) return json({ ok: false, error: '会话无效或已过期' }, 401)
+    if (!r.ok) return introspectFailure(r.kind, errorJson)
+    if (!r.openid) return errorJson(401, '会话无效或已过期')
     // 尽力补资料：门面池里有昵称/头像就带给 resolveIdentity（独立端点，introspect 契约不动）。
     let profile = null
     if (conf.org) {
@@ -431,14 +454,14 @@ export function createAuthServer(config) {
   /** 取码。anchor=allowlist 必须走「手机端显式确认」（confirm 标记原样透传）。 */
   async function handleWxQrcode() {
     const conf = confOf()
-    if (!conf.url || !conf.secret) return json({ ok: false, error: '微信登录暂未开通' }, 503)
+    if (!conf.url || !conf.secret) return errorJson(503, '微信登录暂未开通')
     const payload = {
       action: 'issue',
       ...(conf.org ? { org: conf.org } : {}),
       ...(anchor === 'allowlist' ? { confirm: true } : {}),
     }
     const r = await callAuthServer(conf.url, '/api/auth/qr/issue', payload, { secret: conf.secret })
-    if (!r.ok || !r.data.scene) return json({ ok: false, error: '二维码获取失败，请稍后再试' }, 502)
+    if (!r.ok || !r.data.scene) return errorJson(502, '二维码获取失败，请稍后再试')
     return json({
       ok: true,
       scene: r.data.scene,
@@ -452,13 +475,13 @@ export function createAuthServer(config) {
   /** 轮询。非终态一律原样透传 status —— 尤其 `pending`（已扫码、等确认）：绝不并进 waiting、绝不当终态。 */
   async function handleWxPoll(req) {
     const conf = confOf()
-    if (!conf.url || !conf.secret) return json({ ok: false, error: '微信登录暂未开通' }, 503)
+    if (!conf.url || !conf.secret) return errorJson(503, '微信登录暂未开通')
     const scene = new URL(req.url).searchParams.get('scene') || ''
-    if (!SCENE_RE.test(scene)) return json({ ok: false, error: 'scene 无效' }, 400)
+    if (!SCENE_RE.test(scene)) return errorJson(400, 'scene 无效')
     const r = await callAuthServer(conf.url, '/api/auth/qr/poll', { action: 'poll', scene }, { secret: conf.secret })
-    if (!r.ok) return json({ ok: false, error: '查询失败，请稍后再试' }, 502)
+    if (!r.ok) return errorJson(502, '查询失败，请稍后再试')
     if (r.data.status !== 'ok') return json({ ok: true, status: r.data.status })
-    if (!r.data.openid) return json({ ok: false, error: '登录数据异常，请重试' }, 502)
+    if (!r.data.openid) return errorJson(502, '登录数据异常，请重试')
     return issue(String(r.data.openid), 'qr', { status: 'ok' }, {
       nickname: r.data.nickname || null,
       avatar: r.data.avatar || null,
@@ -477,9 +500,9 @@ export function createAuthServer(config) {
     const code = String((body && body.code) || '').trim()
     const r = await exchangeWeappCode({ code, appId: weapp.appId, appSecret: weapp.appSecret, timeoutMs: weapp.timeoutMs })
     if (!r.ok) {
-      if (r.error === 'not_configured') return json({ ok: false, error: '小程序登录未启用' }, 404)
-      if (r.error === 'bad_code' || r.error === 'invalid_code') return json({ ok: false, error: '登录凭证无效，请重试' }, 401)
-      return json({ ok: false, error: '微信登录服务暂时不可用，请稍后再试' }, 502)
+      if (r.error === 'not_configured') return errorJson(404, '小程序登录未启用')
+      if (r.error === 'bad_code' || r.error === 'invalid_code') return errorJson(401, '登录凭证无效，请重试')
+      return errorJson(502, '微信登录服务暂时不可用，请稍后再试')
     }
     const issued = await resolveAndIssue(r.openid, 'weapp', { nickname: null, avatar: null, unionid: r.unionid })
     if (!issued.ok) return json(issued.body, issued.status)
@@ -556,11 +579,11 @@ export function createAuthServer(config) {
    */
   async function handleDevLogin(req) {
     const { open, allow } = devGate()
-    if (!open) return json({ ok: false, error: 'not_found' }, 404)
+    if (!open) return errorJson(404, 'not_found')
     const body = await req.json().catch(() => null)
     const requested = body && typeof body.uid === 'string' && body.uid.trim() ? body.uid.trim() : ''
     const uid = requested || (allow.length === 1 ? allow[0] : '')
-    if (!uid || !allow.includes(uid)) return json({ ok: false, error: 'not_found' }, 404)
+    if (!uid || !allow.includes(uid)) return errorJson(404, 'not_found')
     const r = await signForUid(uid, null, null)
     if (!r.ok) return json(r.body, r.status)
     return deliverSession(r, undefined)
@@ -594,7 +617,7 @@ export function createAuthServer(config) {
       if (action === 'wx-poll' && method === 'GET') return handleWxPoll(req)
       if (action === 'weapp' && method === 'POST') return handleWeappVerify(req)
       if (action === 'logout' && method === 'POST') return handleLogout(req)
-      return json({ ok: false, error: 'not_found' }, 404)
+      return errorJson(404, 'not_found')
     },
   }
 }

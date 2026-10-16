@@ -472,3 +472,60 @@ test('logout：onLogout(ctx) 收到 req、追加返回的 Set-Cookie，异常不
   assert.equal(res2.status, 200, '钩子异常不得把登出打成 5xx')
   assert.ok(res2.headers.getSetCookie().some((c) => String(c).startsWith('app_session=;')))
 })
+
+// ---------------------------------------------------------------- P-3 errorShape
+
+const p3Base = (extra) => ({
+  session: { secret: 's'.repeat(32) },
+  resolveIdentity: () => ({ uid: 'user-00000001' }),
+  ...extra,
+})
+
+test('P-3 errorShape 缺省：错误体逐字保持 {ok:false,error}（不破 fang/wordinput）', async () => {
+  const routes = createAuthServer(p3Base())
+  const res = await routes.ssoVerify(new Request('http://x/', { method: 'POST', body: '{"ticket":"bad"}' }))
+  assert.equal(res.status, 401)
+  assert.deepEqual(await res.json(), { ok: false, error: '无效票根' })
+})
+
+test("P-3 errorShape:'code-message'：错误体 {ok:false,code,message}，不含 error 字段", async () => {
+  const routes = createAuthServer(p3Base({ errorShape: 'code-message' }))
+  const res = await routes.ssoVerify(new Request('http://x/', { method: 'POST', body: '{"ticket":"bad"}' }))
+  assert.equal(res.status, 401)
+  assert.deepEqual(await res.json(), { ok: false, code: 'LOGIN_REQUIRED', message: '无效票根' })
+})
+
+test("P-3 errorShape:'code-message'：503 通道未配置 → UPSTREAM；404 未启用 → NOT_FOUND", async () => {
+  const noConf = createAuthServer(
+    p3Base({ errorShape: 'code-message', authServer: { url: '', secret: '' } }),
+  )
+  const qr = await noConf.wxQrcode()
+  assert.equal(qr.status, 503)
+  assert.deepEqual(await qr.json(), { ok: false, code: 'UPSTREAM', message: '微信登录暂未开通' })
+
+  const weapp = await noConf.weappVerify(new Request('http://x/', { method: 'POST', body: '{"code":"c"}' }))
+  assert.equal(weapp.status, 404)
+  assert.deepEqual(await weapp.json(), { ok: false, code: 'NOT_FOUND', message: '小程序登录未启用' })
+})
+
+test("P-3 errorShape:'code-message'：403 仍带 configured 附加字段（allowlist 站）", async () => {
+  stubFetch(() => jsonResponse({ ok: true, openid: 'someone-else' }))
+  const routes = createAuthServer({
+    session: { secret: 's'.repeat(32) },
+    authServer: { url: 'http://facade', secret: 'sec' },
+    anchor: 'allowlist',
+    anchorEnv: 'AUTH_ALLOW_OPENID',
+    errorShape: 'code-message',
+    env: { AUTH_ALLOW_OPENID: 'the-only-one', NODE_ENV: 'test' },
+  })
+  const res = await routes.ssoVerify(new Request('http://x/', { method: 'POST', body: JSON.stringify({ ticket: 'a'.repeat(48) }) }))
+  const body = await res.json()
+  assert.equal(res.status, 403)
+  assert.equal(body.code, 'FORBIDDEN')
+  assert.equal(body.error, undefined, 'code-message 形状不得混入 error 字段')
+  assert.equal(body.configured, true, '区分「没配名单」与「不在名单」')
+})
+
+test('P-3 errorShape 非法值 → 装配抛 TypeError（fail-closed）', () => {
+  assert.throws(() => createAuthServer(p3Base({ errorShape: 'b6' })), TypeError)
+})

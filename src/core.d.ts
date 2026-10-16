@@ -115,3 +115,12 @@ export declare function loginCapsFromCapabilities(caps?: {
   isWechatMobile?: boolean
   isMobile?: boolean
 } | null): { isWechatInApp: boolean; isMobileBrowser: boolean }
+
+/**
+ * `errorShape: 'code-message'` 用的错误码表（P-3）：HTTP 状态码 → 稳定码。
+ * 与站点侧（暖帖 B6）同一套码；改这里等于改契约。
+ */
+export declare const AUTH_ERROR_CODES: Readonly<Record<number, string>>
+
+/** 状态码 → 错误码；未登记的状态码 fail-closed 落 `'INTERNAL'`。 */
+export declare function authErrorCode(status: number): string

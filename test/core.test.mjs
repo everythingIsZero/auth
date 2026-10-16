@@ -184,3 +184,20 @@ test('index 出口聚合 core + node（node 层函数已挂载）', () => {
   assert.equal(typeof index.hmacSign, 'function')
   assert.equal(typeof index.hmacVerify, 'function')
 })
+
+// ---------------------------------------------------------------- P-3 错误码表（B6 形状）
+import { authErrorCode, AUTH_ERROR_CODES } from '../src/core.mjs'
+
+test('P-3 authErrorCode：状态码 → B6 错误码（与站点 {ok:false,code,message} 同一套码）', () => {
+  assert.equal(authErrorCode(400), 'BAD_PARAM')
+  assert.equal(authErrorCode(401), 'LOGIN_REQUIRED')
+  assert.equal(authErrorCode(403), 'FORBIDDEN')
+  assert.equal(authErrorCode(404), 'NOT_FOUND')
+  assert.equal(authErrorCode(409), 'CONFLICT')
+  assert.equal(authErrorCode(429), 'RATE_LIMITED')
+  assert.equal(authErrorCode(500), 'INTERNAL')
+  assert.equal(authErrorCode(502), 'UPSTREAM')
+  assert.equal(authErrorCode(503), 'UPSTREAM')
+  assert.equal(authErrorCode(599), 'INTERNAL', '未知状态码 fail-closed 落 INTERNAL')
+  assert.ok(Object.isFrozen(AUTH_ERROR_CODES))
+})

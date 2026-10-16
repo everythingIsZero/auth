@@ -266,3 +266,32 @@ export function loginCapsFromCapabilities(caps) {
     isMobileBrowser: c.isMobile === true,
   }
 }
+
+/**
+ * `errorShape: 'code-message'` 用到的错误码表（P-3）：HTTP 状态码 → 站点可分支的稳定码。
+ *
+ * 为什么要有：本包错误体原为 `{ok:false,error:'…'}`，而站点惯用 `{ok:false,code,message}`
+ * （暖帖 B6 契约，客户端按 `code` 分支）。同一 `/api/auth/*` 前缀两种形状 → 前端写不出统一
+ * 错误处理器；且 `error` 是**中文文案**，拿它做分支会随文案改动而断。
+ * 码表与站点侧一致（THE SAME CODES）：改这里等于改契约。
+ */
+export const AUTH_ERROR_CODES = Object.freeze({
+  400: 'BAD_PARAM',
+  401: 'LOGIN_REQUIRED',
+  403: 'FORBIDDEN',
+  404: 'NOT_FOUND',
+  409: 'CONFLICT',
+  429: 'RATE_LIMITED',
+  500: 'INTERNAL',
+  502: 'UPSTREAM',
+  503: 'UPSTREAM',
+})
+
+/**
+ * 状态码 → 错误码；未登记的状态码 fail-closed 落 `INTERNAL`（不返回 undefined 让前端拿不到码）。
+ * @param {number} status
+ * @returns {string}
+ */
+export function authErrorCode(status) {
+  return AUTH_ERROR_CODES[status] || 'INTERNAL'
+}

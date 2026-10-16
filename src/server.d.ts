@@ -108,6 +108,12 @@ export type AuthRoutesConfig = {
   /** 登录成功时回给前端的 user 形状（缺省 { id, displayName, avatar }） */
   userPayload?: (id: string, displayName?: string | null, avatar?: string | null) => unknown
   /**
+   * 错误体形状（P-3）。缺省 `'error'` = `{ ok:false, error:'<中文文案>' }`（存量站按此读 `data.error`，逐字不变）；
+   * `'code-message'` = `{ ok:false, code:'<稳定码>', message:'<中文文案>' }`，站点按 `code` 分支、不靠文案。
+   * 码表见 `@hxym18/auth/core` 的 `AUTH_ERROR_CODES` / `authErrorCode(status)`。非法值抛 `TypeError`。
+   */
+  errorShape?: 'error' | 'code-message'
+  /**
    * env 访问器：缺省 `process.env`；可传对象或 `(key) => value`（换运行时可注入，不读全局 env）。
    * 注意：核心仍经 `node:crypto` 签会话，**运行时限 Node**；Edge/CF 需自备签名。
    */
