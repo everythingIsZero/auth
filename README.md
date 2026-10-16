@@ -94,7 +94,7 @@ export function LoginPanel() {
 | `wx-qrcode` | GET | PC 扫码取码 |
 | `wx-poll` | GET | PC 扫码轮询 |
 | `weapp` | POST | 小程序换码登录（token） |
-| `logout` | POST | 登出 |
+| `logout` | POST | 登出（未登录 → 401；仍清 cookie） |
 
 站点唯一业务回调 = `resolveIdentity(openid, ctx)`（openid → 本站 user）。**非 `allowlist` 锚定必填**（缺则装配抛 `TypeError`，消息含 `resolveIdentity`）；`allowlist` 站可省略——uid 即白名单 openid。`resolveIdentity` 返回的 `uid` 须匹配 `/^[A-Za-z0-9_-]{8,64}$/`（字母数字 + `-`/`_`，8..64）：**openid 不作公开 id（除 allowlist）**，站点须映射为本站 uid，不得直接回传微信 openid。`session.secret` **不传** = 装配错误（抛 `TypeError`）；**取值为空** = 运行期缺配，fail-closed 返 503。
 
@@ -116,6 +116,8 @@ export function LoginPanel() {
   | 409 | `CONFLICT` | 429 | `RATE_LIMITED` |
 
 - **为什么是配置而不是直接换默认**：`error` 是中文文案，拿它分支会随文案漂移；但两站现读 `data.error`，硬切即断。故共享层提供 `code-message` 形状与码表，由各站显式选择——「统一」靠各站都选同一种达成。
+
+**登出语义（`logout`）**：无有效会话且无已声明 legacy cookie 的请求 → **401**（`LOGIN_REQUIRED`），但**仍清统一会话 cookie、清 legacy cookie、仍调 `onLogout`**——陈旧 cookie 必须能清掉，迁移期旧会话行必须能销（站点据此可区分「真的登出了」与「本来就没登录」）。判定「已登录」= 有效统一会话（cookie 或 `Authorization: Bearer`）**或**任一已声明 `legacyCookies` 名出现在请求里。不传 `req` 的服务端直调无从判定 → 维持 200。
 
 > **私有前缀响应必须 `no-store`（S2 反向义务）**：`/s/`、`/r/`、`/api/` 等私有/敏感前缀的响应一律不得被缓存。本包所有响应（票根、会话、门面回包）固定 `Cache-Control: no-store`（`src/server.mjs:29`，含 `config`/`dev-login`/`sso-verify`/`wx-*`/`weapp`/`logout` 全部端点）；站点自有的私有前缀响应也须自标 `no-store`——SW 读不到 `Cookie`/`Set-Cookie`（forbidden header），防线只能靠响应头。
 

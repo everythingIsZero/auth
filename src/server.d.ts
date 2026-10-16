@@ -132,7 +132,11 @@ export type AuthRoutes = {
    * 返回 `{ ok:true, token, maxAgeSec, user }`（weapp 无 cookie，故用 token）。
    */
   weappVerify: (req: Request) => Promise<Response>
-  /** POST /api/auth/logout：清会话 cookie */
+  /**
+   * POST /api/auth/logout：清会话 cookie。
+   * **未登录（无有效会话且无已声明 legacy cookie）→ 401**（P-2），但仍清 cookie 并调 `onLogout`；
+   * 不传 `req` 的服务端直调维持 200。错误体形状随 `errorShape`。
+   */
   logout: (req?: Request) => Promise<Response>
   /** GET /api/auth/config：能力探测 → `{ ok:true, wxEnabled, devLogin }`（devLogin=三重门是否开启） */
   config: () => Promise<Response>

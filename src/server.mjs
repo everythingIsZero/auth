@@ -515,12 +515,21 @@ export function createAuthServer(config) {
    * 登出：清统一会话 cookie；**迁移期**额外清站点声明的 legacy cookie（`session.legacyCookies`）
    * 并调用站点 `onLogout(ctx)` 钩子（返回的 Set-Cookie 头原样追加）。
    *
+   * **未登录返 401（P-2）**：请求带不出任何会话凭据时，不该假装成功（站点侧「登出未登录」应可区分）。
+   * 但**清 cookie 与 `onLogout` 一律照做**——陈旧 cookie 必须能被清掉，迁移期旧会话行也必须能销。
+   * 「已登录」的判定 = 有效统一会话（cookie 或 `Authorization: Bearer`）**或**任一已声明的 legacy cookie
+   * （谁是真会话由站点私有实现决定，共享包只认「这个声明过的名字在不在」）。
+   * 不传 `req`（服务端直调）时无从判定登录态 → 维持 200，只做「清 cookie」这件事。
+   *
    * 为什么是扩展点而不是每站包一层 `[action]`：legacy cookie（`wi_session`/`fang_session` 等）
    * 是**站点私有**的过渡产物（名字与是否需要销 DB 行各站不同），共享包无从知道；把它做成声明 + 钩子
    * 后，站点只声明，不再复制「包一层只对 logout 追加 Set-Cookie」的路由代码。
    */
   async function handleLogout(req) {
-    const res = json({ ok: true })
+    const sess = req ? getSession(req, { secret: secretOf(), cookieName, ttlSec }) : null
+    const cookieHeader = req ? req.headers.get('cookie') || '' : ''
+    const hasLegacy = Boolean(req) && legacyCookies.some((name) => Boolean(readCookieValue(cookieHeader, name)))
+    const res = !req || sess || hasLegacy ? json({ ok: true }) : errorJson(401, '请先登录')
     res.headers.append('set-cookie', clearCookie(cookieName))
     // 迁移期 legacy cookie：声明即清（同一 Path=/；Secure 与统一会话同口径）
     for (const name of legacyCookies) res.headers.append('set-cookie', clearCookie(name))

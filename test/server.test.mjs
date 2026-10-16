@@ -529,3 +529,68 @@ test("P-3 errorShape:'code-message'：403 仍带 configured 附加字段（allow
 test('P-3 errorShape 非法值 → 装配抛 TypeError（fail-closed）', () => {
   assert.throws(() => createAuthServer(p3Base({ errorShape: 'b6' })), TypeError)
 })
+
+// ---------------------------------------------------------------- P-2 登出语义
+
+test('P-2 logout：无会话的请求 → 401，但仍清 cookie、仍调 onLogout（迁移期要销旧 DB 行）', async () => {
+  let called = 0
+  const routes = createAuthServer({
+    session: { secret: 's'.repeat(32), legacyCookies: ['fang_session'] },
+    resolveIdentity: () => ({ uid: 'user-00000001' }),
+    onLogout: () => {
+      called++
+      return ['legacy_row=cleared; Path=/; Max-Age=0']
+    },
+  })
+  const res = await routes.logout(new Request('https://x/api/auth/logout', { method: 'POST' }))
+  assert.equal(res.status, 401)
+  assert.equal((await res.json()).error, '请先登录')
+  const cookies = res.headers.getSetCookie().map(String)
+  assert.ok(cookies.some((c) => c.startsWith('app_session=;')), '仍须清统一会话 cookie')
+  assert.ok(cookies.some((c) => c.startsWith('fang_session=;')), '仍须清 legacy cookie')
+  assert.ok(cookies.includes('legacy_row=cleared; Path=/; Max-Age=0'), 'onLogout 的头仍须追加')
+  assert.equal(called, 1)
+})
+
+test('P-2 logout：无会话 + code-message 形状 → {ok:false,code:LOGIN_REQUIRED,message}', async () => {
+  const routes = createAuthServer({
+    session: { secret: 's'.repeat(32) },
+    errorShape: 'code-message',
+    resolveIdentity: () => ({ uid: 'user-00000001' }),
+  })
+  const res = await routes.logout(new Request('https://x/api/auth/logout', { method: 'POST' }))
+  assert.equal(res.status, 401)
+  assert.deepEqual(await res.json(), { ok: false, code: 'LOGIN_REQUIRED', message: '请先登录' })
+})
+
+test('P-2 logout：带有效会话 cookie → 200；只带已声明 legacy cookie → 200（迁移期算已登录）', async () => {
+  const routes = createAuthServer({
+    session: { secret: 's'.repeat(32), legacyCookies: ['fang_session'] },
+    resolveIdentity: () => ({ uid: 'user-00000001' }),
+    // 借 dev-login 三重门拿一张真会话 cookie（纯公开 API，不碰内部签发函数）
+    env: { NODE_ENV: 'test', AUTH_DEV_LOGIN: '1', AUTH_DEV_UID: 'user-00000001' },
+  })
+  const login = await routes.devLogin(new Request('http://x/api/auth/dev-login', { method: 'POST' }))
+  assert.equal(login.status, 200)
+  const cookie = String(login.headers.getSetCookie()[0]).split(';')[0]
+  assert.equal((await routes.logout(new Request('http://x/', { method: 'POST', headers: { cookie } }))).status, 200)
+  assert.equal((await routes.logout(new Request('http://x/', { method: 'POST', headers: { cookie: 'fang_session=abc' } }))).status, 200)
+})
+
+test('P-2 logout：Bearer 会话（deliver=token）→ 200', async () => {
+  const routes = createAuthServer({
+    session: { secret: 's'.repeat(32), deliver: 'token' },
+    resolveIdentity: () => ({ uid: 'user-00000001' }),
+    env: { NODE_ENV: 'test', AUTH_DEV_LOGIN: '1', AUTH_DEV_UID: 'user-00000001' },
+  })
+  const login = await routes.devLogin(new Request('http://x/api/auth/dev-login', { method: 'POST' }))
+  const token = (await login.json()).token
+  assert.ok(token)
+  const res = await routes.logout(new Request('http://x/', { method: 'POST', headers: { authorization: `Bearer ${token}` } }))
+  assert.equal(res.status, 200)
+})
+
+test('P-2 logout：不传 req（服务端直调）→ 保持 200（无请求即无登录态可断言）', async () => {
+  const routes = createAuthServer({ session: { secret: 's'.repeat(32) }, resolveIdentity: () => ({ uid: 'user-00000001' }) })
+  assert.equal((await routes.logout()).status, 200)
+})

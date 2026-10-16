@@ -303,16 +303,16 @@ test('wxConfigured：门面未配置 false / 已配置 true（登录页能力探
   assert.equal(createAuthRoutes(baseConfig({})).wxConfigured(), true)
 })
 
-test('logout：清 cookie（Max-Age=0）', async () => {
+test('logout：无会话 → 401（P-2），但仍清 cookie（Max-Age=0）', async () => {
   const routes = createAuthRoutes(baseConfig({}))
   const res = await routes.logout(new Request('http://x/', { method: 'POST' }))
-  assert.equal(res.status, 200)
+  assert.equal(res.status, 401, '未登录不该假装成功')
   assert.match(res.headers.get('set-cookie'), /Max-Age=0/)
 })
 
-test('dispatch：按路径分发，未知路径 404', async () => {
+test('dispatch：按路径分发（logout 无会话 401），未知路径 404', async () => {
   stubFetch(() => jsonResponse({ ok: true, openid: 'o' }))
   const routes = createAuthRoutes(baseConfig({}))
-  assert.equal((await routes.dispatch(new Request('http://x/api/auth/logout', { method: 'POST' }))).status, 200)
+  assert.equal((await routes.dispatch(new Request('http://x/api/auth/logout', { method: 'POST' }))).status, 401)
   assert.equal((await routes.dispatch(new Request('http://x/api/auth/nope', { method: 'GET' }))).status, 404)
 })

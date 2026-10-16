@@ -13,6 +13,7 @@ export type HonoAuthRoutes = {
   wxQrcode: (c?: HonoContextLike) => Promise<Response>
   wxPoll: (c: HonoContextLike) => Promise<Response>
   weappVerify: (c: HonoContextLike) => Promise<Response>
+  /** 未登录 → 401（仍清 cookie）；不传 `c` 的服务端直调维持 200 */
   logout: (c?: HonoContextLike) => Promise<Response>
   wxConfigured: () => boolean
   dispatch: (c: HonoContextLike) => Promise<Response>
