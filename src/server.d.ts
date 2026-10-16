@@ -114,6 +114,13 @@ export type AuthRoutesConfig = {
    */
   errorShape?: 'error' | 'code-message'
   /**
+   * 成功信封（P-10），与 `errorShape` 成对。缺省 `'flat'` = `{ ok:true, ...extra, user, token? }`（逐字不变）；
+   * `'data'` = `{ ok:true, data:{ ...extra, user, token? } }`，站点客户端一律解 `data`。
+   * **只作用于发会话的端点**（sso-verify / wx-poll ok / weapp / dev-login）；`config` / `wx-qrcode` /
+   * `wx-poll` 非终态形状不随本开关变化。非法值抛 `TypeError`。
+   */
+  envelope?: 'flat' | 'data'
+  /**
    * env 访问器：缺省 `process.env`；可传对象或 `(key) => value`（换运行时可注入，不读全局 env）。
    * 注意：核心仍经 `node:crypto` 签会话，**运行时限 Node**；Edge/CF 需自备签名。
    */

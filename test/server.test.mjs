@@ -666,3 +666,92 @@ test('P-9：profile 拿不到（空对象/通道故障）→ 仍登录成功，c
   assert.equal(seen[0].nickname, null)
   assert.equal(seen[0].avatar, null)
 })
+
+// ---------------------------------------------------------------- P-10 成功信封
+
+const p10Base = (sessionExtra = {}, top = {}) => ({
+  session: { secret: 's'.repeat(32), ...sessionExtra },
+  resolveIdentity: () => ({ uid: 'user-00000001' }),
+  env: { NODE_ENV: 'test', AUTH_DEV_LOGIN: '1', AUTH_DEV_UID: 'user-00000001' },
+  ...top,
+})
+
+test('P-10 envelope 缺省 flat：发会话端点形状逐字不变', async () => {
+  const routes = createAuthServer(p10Base({ deliver: 'both' }))
+  const body = await (await routes.devLogin(new Request('http://x/api/auth/dev-login', { method: 'POST' }))).json()
+  assert.equal(body.ok, true)
+  assert.equal(body.user.id, 'user-00000001')
+  assert.ok(body.token, 'flat 形状 token 在顶层')
+  assert.equal(body.data, undefined)
+})
+
+test("P-10 envelope:'data'：{ok,data:{user,token}}，顶层只有 ok", async () => {
+  const routes = createAuthServer(p10Base({ deliver: 'both' }, { envelope: 'data' }))
+  const body = await (await routes.devLogin(new Request('http://x/api/auth/dev-login', { method: 'POST' }))).json()
+  assert.deepEqual(Object.keys(body).sort(), ['data', 'ok'])
+  assert.equal(body.data.user.id, 'user-00000001')
+  assert.ok(body.data.token, 'data 形状 token 在 data 里')
+})
+
+test("P-10 envelope:'data'：extra（如 wx-poll 的 status:'ok'）与 maxAgeSec 一并进 data", async () => {
+  stubFetch((url) => {
+    if (url.includes('/api/auth/qr/poll')) return jsonResponse({ ok: true, status: 'ok', openid: 'o-1', unionid: 'u-1' })
+    return jsonResponse({})
+  })
+  const routes = createAuthServer({
+    session: { secret: 's'.repeat(32), deliver: 'both' },
+    envelope: 'data',
+    authServer: { url: 'http://facade', secret: 'sec' },
+    resolveIdentity: () => ({ uid: 'user-00000001' }),
+  })
+  const body = await (await routes.wxPoll(new Request('http://x/api/auth/wx-poll?scene=ssologin-' + 'a'.repeat(24)))).json()
+  assert.deepEqual(Object.keys(body).sort(), ['data', 'ok'])
+  assert.equal(body.data.status, 'ok')
+  assert.equal(body.data.user.id, 'user-00000001')
+  assert.ok(body.data.token)
+})
+
+test("P-10 envelope:'data'：weapp 也包（nuantie 需要 {ok,data:{user,token}}）", async () => {
+  stubFetch((url) => {
+    if (url.includes('jscode2session')) return jsonResponse({ openid: 'o-1', unionid: 'u-1' })
+    return jsonResponse({})
+  })
+  const routes = createAuthServer({
+    session: { secret: 's'.repeat(32) },
+    envelope: 'data',
+    weapp: { appId: 'appid', appSecret: 'secret' },
+    resolveIdentity: () => ({ uid: 'user-00000001' }),
+  })
+  const res = await routes.weappVerify(new Request('http://x/api/auth/weapp', { method: 'POST', body: '{"code":"c1"}' }))
+  assert.equal(res.status, 200)
+  const body = await res.json()
+  assert.deepEqual(Object.keys(body).sort(), ['data', 'ok'])
+  assert.equal(body.data.user.id, 'user-00000001')
+  assert.ok(typeof body.data.token === 'string' && body.data.token)
+  assert.ok(typeof body.data.maxAgeSec === 'number')
+})
+
+test('P-10 envelope 非法值 → 装配抛 TypeError', () => {
+  assert.throws(() => createAuthServer(p10Base({}, { envelope: 'wrapped' })), TypeError)
+})
+
+test("P-10 envelope:'data' 不影响 config/wx-qrcode 的既有形状（controller 依赖）", async () => {
+  stubFetch((url) => {
+    if (url.includes('/api/auth/qr/issue')) return jsonResponse({ ok: true, scene: 'ssologin-' + 'b'.repeat(24), qrUrl: 'https://x/q', expiresIn: 300 })
+    return jsonResponse({})
+  })
+  const routes = createAuthServer({
+    session: { secret: 's'.repeat(32) },
+    envelope: 'data',
+    authServer: { url: 'http://facade', secret: 'sec' },
+    resolveIdentity: () => ({ uid: 'user-00000001' }),
+  })
+  const cfg = await (await routes.config()).json()
+  assert.equal(cfg.ok, true)
+  assert.equal(typeof cfg.wxEnabled, 'boolean', 'config 仍扁平')
+  const qr = await routes.wxQrcode()
+  const qrBody = await qr.json()
+  assert.equal(qrBody.ok, true)
+  assert.ok(qrBody.scene, 'wx-qrcode 仍扁平')
+  assert.equal(qrBody.data, undefined)
+})

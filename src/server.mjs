@@ -258,6 +258,20 @@ export function createAuthServer(config) {
   if (errorShape !== 'error' && errorShape !== 'code-message') {
     throw new TypeError(`createAuthServer: 未知 errorShape「${errorShape}」（error|code-message）`)
   }
+  /**
+   * 成功信封（P-10），与 `errorShape` 成对：
+   *   'flat'（缺省）：`{ ok:true, ...extra, user, token? }`——存量站形状**逐字不变**。
+   *   'data'       ：`{ ok:true, data:{ ...extra, user, token? } }`——站点客户端一律解 `data`，
+   *                  不必为「本包返回扁平信封」自写一层包壳路由。
+   * **只作用于发会话的端点**（sso-verify / wx-poll ok / weapp / dev-login）；`config` / `wx-qrcode` /
+   * `wx-poll` 非终态的形状是共享 controller 的接口，不随本开关变化。
+   */
+  const envelope = cfg.envelope === undefined ? 'flat' : cfg.envelope
+  if (envelope !== 'flat' && envelope !== 'data') {
+    throw new TypeError(`createAuthServer: 未知 envelope「${envelope}」（flat|data）`)
+  }
+  /** 成功体投递（唯一出口，一处决定信封形状）。 */
+  const successJson = (body) => json(envelope === 'data' ? { ok: true, data: body } : { ok: true, ...body })
   /** 错误体对象（`extra` 为站点附加字段，如 allowlist 的 `configured`）。 */
   const errorBody = (status, message, extra) =>
     errorShape === 'code-message'
@@ -402,11 +416,11 @@ export function createAuthServer(config) {
     return r
   }
 
-  /** 按 `deliver`（cookie / token / both）投递已签会话；`extra` 并入响应体。 */
+  /** 按 `deliver`（cookie / token / both）投递已签会话；`extra` 并入成功体（信封见 `successJson`）。 */
   function deliverSession(r, extra) {
-    const body = { ok: true, ...(extra || {}), user: r.user }
+    const body = { ...(extra || {}), user: r.user }
     if (deliver !== 'cookie') body.token = r.value
-    const res = json(body)
+    const res = successJson(body)
     if (deliver !== 'token') {
       // Secure 决策与续期侧（node.mjs renewSession）共用 core.resolveSessionSecure 同一口径：
       // 默认恒 Secure；仅显式 session.secure===false 且非生产才关；生产里显式关无效（fail-closed）。
@@ -515,7 +529,7 @@ export function createAuthServer(config) {
     }
     const issued = await resolveAndIssue(r.openid, 'weapp', { nickname: null, avatar: null, unionid: r.unionid })
     if (!issued.ok) return json(issued.body, issued.status)
-    return json({ ok: true, token: issued.value, maxAgeSec: issued.maxAgeSec, user: issued.user })
+    return successJson({ token: issued.value, maxAgeSec: issued.maxAgeSec, user: issued.user })
   }
 
   /* ---------------- 登出 ---------------- */
