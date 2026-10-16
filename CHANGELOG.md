@@ -10,6 +10,16 @@
 
 - **`AUTH_ORIGIN` 登记为 SSO 源单源（OPS-9）**：`@hxym18/auth/core` 早已导出该常量（自 v0.1.0），本批补文档并收紧声明——README 出口表/说明写明站点一律取 `AUTH_ORIGIN`（`'https://auth.hxym18.com'`，无尾斜杠），勿再硬编码（wordinput / fang / nuantie 历史上共 4 处逐字复制）。`src/core.d.ts` 声明由 `string` 收紧为字面量类型 `'https://auth.hxym18.com'`（仅精度，兼容既有消费方）；`core.test.mjs` 增断言：值正确、可从 core 取、规范 origin 形态、且为 `buildAuthRedirect` 缺省 origin（单源不分叉）。**无行为变更，无新出口，无需发版**。
 
+## [0.13.0] - 2026-10-16
+
+### Added
+
+- **成功信封配置口 `envelope`（P-10）**：`createAuthServer({ envelope: 'flat' | 'data' })`，与 `errorShape` 成对。缺省 `'flat'` = `{ ok:true, ...extra, user, token? }`（**逐字不变**）；`'data'` = `{ ok:true, data:{ ...extra, user, token? } }`——客户端一律解 `data` 的站（如暖帖）不必再自写一层包壳路由。**只作用于发会话的端点**（`sso-verify` / `wx-poll` 的 status=ok / `weapp` / `dev-login`）；`config` / `wx-qrcode` / `wx-poll` 非终态形状不随该开关变化（共享 controller 的接口）。非法值装配抛 `TypeError`。新增单一成功出口 `successJson`。
+
+### Fixed
+
+- **未配 `authServer.org` 也调 `/api/auth/profile`（P-9）**：原先 `if (conf.org)` 把「站点没配 `AUTH_ISSUE_ORG`」错译成「没有资料可读」→ 昵称/头像**永远 null**、用户永远显示占位名，而接口全绿（静默劣化线上数据）。门面契约本就支持不传 org（`casdoor-registry.readProfile` 的 `orgAllowed(org) ? org : defaultOrg()`，缺省回落 `orgs[0]`）。现在只要 `url` + `secret` 已配就调 profile，`org` 仅在非空时传。**站点无需改代码、无需加 env**；已配 org 的站行为不变。取不到资料仍按「无昵称」降级，绝不算登录失败。
+
 ## [0.12.0] - 2026-10-16
 
 ### Added
