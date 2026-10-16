@@ -10,6 +10,16 @@
 
 - **`AUTH_ORIGIN` 登记为 SSO 源单源（OPS-9）**：`@hxym18/auth/core` 早已导出该常量（自 v0.1.0），本批补文档并收紧声明——README 出口表/说明写明站点一律取 `AUTH_ORIGIN`（`'https://auth.hxym18.com'`，无尾斜杠），勿再硬编码（wordinput / fang / nuantie 历史上共 4 处逐字复制）。`src/core.d.ts` 声明由 `string` 收紧为字面量类型 `'https://auth.hxym18.com'`（仅精度，兼容既有消费方）；`core.test.mjs` 增断言：值正确、可从 core 取、规范 origin 形态、且为 `buildAuthRedirect` 缺省 origin（单源不分叉）。**无行为变更，无新出口，无需发版**。
 
+## [0.12.0] - 2026-10-16
+
+### Added
+
+- **错误体形状 `errorShape`（P-3）**：`createAuthServer({ errorShape: 'error' | 'code-message' })`。缺省 `'error'` 即 `{ ok:false, error:'<中文文案>' }`，**逐字不变**（存量站按 `data.error` 读，不受影响）；`'code-message'` 输出 `{ ok:false, code, message }`——站点按 `code` 分支、不靠中文文案判类型。新增 `@hxym18/auth/core` 导出 `AUTH_ERROR_CODES`（400 `BAD_PARAM` / 401 `LOGIN_REQUIRED` / 403 `FORBIDDEN` / 404 `NOT_FOUND` / 409 `CONFLICT` / 429 `RATE_LIMITED` / 500 `INTERNAL` / 502·503 `UPSTREAM`）与 `authErrorCode(status)`（未登记状态码 fail-closed 落 `INTERNAL`，不返 undefined）。非法 `errorShape` 装配抛 `TypeError`。20 处错误出口收敛到单一 `errorJson`。
+
+### Changed
+
+- **BREAKING `logout` 未登录返 401（P-2）**：请求带不出任何会话凭据（无有效统一会话、也无已声明 `session.legacyCookies` 名）时返回 401（形状随 `errorShape`），**不再假装成功**——站点侧「登出未登录」可区分。**清 cookie、清 legacy cookie、调 `onLogout` 一律照做**（陈旧 cookie 必须能清、迁移期旧会话行必须能销）。不传 `req` 的服务端直调无从判定登录态 → 维持 200。
+
 ## [0.11.0] - 2026-10-12
 
 ### Added
