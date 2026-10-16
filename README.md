@@ -240,7 +240,7 @@ auth 消费的门面端点形态（`callAuthServer` POST JSON + `x-auth-secret`�
 | 端点 | 门面形态 | auth 取用 |
 |---|---|---|
 | `introspect` | `{ openid, unionid }` | `openid` 认人；`unionid` 有则透传 `resolveIdentity.ctx`，无则 `null`（不阻塞登录） |
-| `profile` | `{ profile: { nickname, avatar }, unionid }` | 补昵称/头像（需配 `authServer.org`），取用失败降级 |
+| `profile` | `{ profile: { nickname, avatar }, unionid }` | 补昵称/头像（**不要求配 `authServer.org`**：门面 org 缺省回落其 `defaultOrg()`；配了则带上，用于多 org 定位与登记）；取用失败降级 |
 | `qr/issue` | `{ scene, qrUrl, pairCode?, confirm? }` | `scene`/`qrUrl` 必给；`pairCode`/`confirm` 门面有才透传 |
 | `qr/poll` | `{ status, openid?, nickname?, avatar?, unionid? }` | `status≠ok` 原样透传；`status=ok` 时取 `openid` 签会话，昵称/头像/unionid 有则透传 |
 

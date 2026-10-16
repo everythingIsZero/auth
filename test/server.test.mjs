@@ -594,3 +594,75 @@ test('P-2 logout：不传 req（服务端直调）→ 保持 200（无请求即�
   const routes = createAuthServer({ session: { secret: 's'.repeat(32) }, resolveIdentity: () => ({ uid: 'user-00000001' }) })
   assert.equal((await routes.logout()).status, 200)
 })
+
+// ---------------------------------------------------------------- P-9 未配 org 也读资料
+
+test('P-9：未配 org（AUTH_ISSUE_ORG 空）也必须调 /api/auth/profile，昵称/头像不得静默丢', async () => {
+  const calls = []
+  stubFetch((url) => {
+    calls.push(url)
+    if (url.includes('/api/auth/introspect')) return jsonResponse({ ok: true, openid: 'o-123' })
+    if (url.includes('/api/auth/profile')) {
+      return jsonResponse({ ok: true, profile: { nickname: '小明', avatar: 'https://cdn/a.png' }, unionid: 'u-1' })
+    }
+    return jsonResponse({})
+  })
+  const seen = []
+  const routes = createAuthServer({
+    session: { secret: 's'.repeat(32) },
+    authServer: { url: 'http://facade', secret: 'sec' }, // 故意不传 org
+    resolveIdentity: (openid, ctx) => {
+      seen.push({ openid, ctx })
+      return { uid: 'user-00000001' }
+    },
+  })
+  const res = await routes.ssoVerify(new Request('http://x/', { method: 'POST', body: JSON.stringify({ ticket: 'a'.repeat(48) }) }))
+  assert.equal(res.status, 200)
+  assert.ok(
+    calls.some((u) => u.includes('/api/auth/profile')),
+    `未配 org 也必须调 profile（否则昵称/头像永远 null）：${calls.join(' | ')}`,
+  )
+  assert.equal(seen[0].ctx.nickname, '小明')
+  assert.equal(seen[0].ctx.avatar, 'https://cdn/a.png')
+})
+
+test('P-9：已配 org 时请求体仍带 org（不回归）', async () => {
+  const bodies = []
+  stubFetch((url, body) => {
+    if (url.includes('/api/auth/introspect')) return jsonResponse({ ok: true, openid: 'o-123' })
+    if (url.includes('/api/auth/profile')) {
+      bodies.push(body)
+      return jsonResponse({ ok: true, profile: { nickname: '小明' }, unionid: 'u-1' })
+    }
+    return jsonResponse({})
+  })
+  const routes = createAuthServer({
+    session: { secret: 's'.repeat(32) },
+    authServer: { url: 'http://facade', secret: 'sec', org: 'my-org' },
+    resolveIdentity: () => ({ uid: 'user-00000001' }),
+  })
+  await routes.ssoVerify(new Request('http://x/', { method: 'POST', body: JSON.stringify({ ticket: 'a'.repeat(48) }) }))
+  assert.equal(bodies.length, 1)
+  assert.equal(bodies[0].org, 'my-org')
+})
+
+test('P-9：profile 拿不到（空对象/通道故障）→ 仍登录成功，ctx 昵称头像为 null（降级不变）', async () => {
+  stubFetch((url) => {
+    if (url.includes('/api/auth/introspect')) return jsonResponse({ ok: true, openid: 'o-123' })
+    if (url.includes('/api/auth/profile')) return new Response('boom', { status: 500 })
+    return jsonResponse({})
+  })
+  const seen = []
+  const routes = createAuthServer({
+    session: { secret: 's'.repeat(32) },
+    authServer: { url: 'http://facade', secret: 'sec' },
+    resolveIdentity: (openid, ctx) => {
+      seen.push(ctx)
+      return { uid: 'user-00000001' }
+    },
+  })
+  const res = await routes.ssoVerify(new Request('http://x/', { method: 'POST', body: JSON.stringify({ ticket: 'a'.repeat(48) }) }))
+  assert.equal(res.status, 200, 'profile 故障绝不算登录故障')
+  assert.equal(seen[0].nickname, null)
+  assert.equal(seen[0].avatar, null)
+})

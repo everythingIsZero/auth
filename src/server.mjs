@@ -434,10 +434,19 @@ export function createAuthServer(config) {
     if (!r.ok) return introspectFailure(r.kind, errorJson)
     if (!r.openid) return errorJson(401, '会话无效或已过期')
     // 尽力补资料：门面池里有昵称/头像就带给 resolveIdentity（独立端点，introspect 契约不动）。
+    // **不拿 org 当开关（P-9）**：门面契约里 org 缺省即回落 `defaultOrg()`（`casdoor-registry.readProfile`
+    // 的 `orgAllowed(org) ? org : defaultOrg()`）——「不传 org」是它明确支持的路径。
+    // 原先 `if (conf.org)` 把「站点没配 AUTH_ISSUE_ORG」错译成「没有资料可读」→ 昵称/头像永远 null、
+    // 用户永远叫「微信用户」，而接口全绿（静默劣化线上数据）。org 现在只在有值时传。
     let profile = null
-    if (conf.org) {
+    if (conf.url && conf.secret) {
       try {
-        const pr = await callAuthServer(conf.url, '/api/auth/profile', { ticket, org: conf.org }, { secret: conf.secret })
+        const pr = await callAuthServer(
+          conf.url,
+          '/api/auth/profile',
+          conf.org ? { ticket, org: conf.org } : { ticket },
+          { secret: conf.secret },
+        )
         if (pr.ok && pr.data && typeof pr.data.profile === 'object' && pr.data.profile) profile = pr.data.profile
       } catch {
         /* 降级：无资料 */
