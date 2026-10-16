@@ -755,3 +755,21 @@ test("P-10 envelope:'data' 不影响 config/wx-qrcode 的既有形状（controll
   assert.ok(qrBody.scene, 'wx-qrcode 仍扁平')
   assert.equal(qrBody.data, undefined)
 })
+
+test('P-10 envelope 缺省 flat：weapp 与 sso-verify 的键序与改前逐字一致（字节级 parity）', async () => {
+  stubFetch((url) => {
+    if (url.includes('jscode2session')) return jsonResponse({ openid: 'o-1', unionid: 'u-1' })
+    if (url.includes('/api/auth/introspect')) return jsonResponse({ ok: true, openid: 'o-1' })
+    return jsonResponse({})
+  })
+  const routes = createAuthServer({
+    session: { secret: 's'.repeat(32) },
+    weapp: { appId: 'a', appSecret: 'b' },
+    authServer: { url: 'http://facade', secret: 'sec' },
+    resolveIdentity: () => ({ uid: 'user-00000001' }),
+  })
+  const weapp = await routes.weappVerify(new Request('http://x/api/auth/weapp', { method: 'POST', body: '{"code":"c"}' }))
+  assert.equal(JSON.stringify(Object.keys(await weapp.json())), JSON.stringify(['ok', 'token', 'maxAgeSec', 'user']))
+  const sso = await routes.ssoVerify(new Request('http://x/', { method: 'POST', body: JSON.stringify({ ticket: 'a'.repeat(48) }) }))
+  assert.equal(JSON.stringify(Object.keys(await sso.json())), JSON.stringify(['ok', 'user']))
+})
